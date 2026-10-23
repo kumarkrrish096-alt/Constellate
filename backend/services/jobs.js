@@ -40,9 +40,7 @@ export async function createorgetajob(fullname,sha,branch)
 
   try {
     const result = await Job.updateOne(
-        {
-            filter
-        },
+        filter,
         {
             $setOnInsert: 
             {

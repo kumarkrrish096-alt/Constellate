@@ -1,4 +1,6 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { getUser, isLoggedIn, logout } from '../../auth/AuthService';
 import { initAtlas } from './atlas';
 import './LandingPage.css';
 
@@ -9,6 +11,13 @@ import './LandingPage.css';
  * keeping DOM interactions cleanly separated from React state.
  */
 export default function LandingPage() {
+  const [user, setUser] = useState(() => (isLoggedIn() ? getUser() : null));
+
+  const handleLogout = () => {
+    logout();
+    setUser(null);
+  };
+
   /* ── Refs for DOM elements the atlas needs ──────────── */
   const glRef = useRef(null);
   const fxRef = useRef(null);
@@ -75,7 +84,25 @@ export default function LandingPage() {
       {/* Top bar */}
       <header className="top">
         <div className="mark">Constellate</div>
-
+        <nav className="top-nav">
+          {user ? (
+            <>
+              <span className="top-user">{user.name || user.email}</span>
+              <button type="button" className="top-link" onClick={handleLogout}>
+                Log out
+              </button>
+            </>
+          ) : (
+            <>
+              <Link to="/login" className="top-link">
+                Log in
+              </Link>
+              <Link to="/signup" className="top-link highlight">
+                Sign up
+              </Link>
+            </>
+          )}
+        </nav>
       </header>
 
       {/* Hero */}

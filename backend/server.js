@@ -8,6 +8,9 @@ import { connectdb } from "./db/connect.js";
 import healthrouter from "./routes/health.js";
 import analyzerouter from "./routes/analyze.js";
 import snapshotsrouter from "./routes/snapshots.js";
+import authrouter from "./routes/auth.js";
+import oauthrouter from "./routes/oauth.js";
+import { requireauth } from "./middleware/auth.js";
 
 const app=express();
 const PORT=process.env.PORT || 5000;
@@ -17,10 +20,15 @@ app.use(express.json());
 
 
 
+// Public routes (no token needed)
 app.use("/health", healthrouter);
-app.use("/api/analyze", analyzerouter);
-app.use("/api/jobs", jobstatusrouter);
-app.use("/api/snapshots", snapshotsrouter);
+app.use("/api/auth", authrouter);
+app.use("/api/auth", oauthrouter);
+
+// Protected routes (require valid JWT)
+app.use("/api/analyze", requireauth, analyzerouter);
+app.use("/api/jobs", requireauth, jobstatusrouter);
+app.use("/api/snapshots", requireauth, snapshotsrouter);
 
 
 try {

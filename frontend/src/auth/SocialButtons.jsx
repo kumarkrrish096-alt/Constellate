@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react';
+
 const Google = () => (
     <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
         <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z" />
@@ -18,14 +20,40 @@ export const Divider = ({ children }) => (
 );
 
 export default function SocialButtons({ mode = 'login', onProvider, disabled }) {
+    const [loadingProvider, setLoadingProvider] = useState(null);
     const verb = mode === 'login' ? 'Continue' : 'Sign up';
+
+    // Automatically cancel loading state if user navigates back using the browser back button
+    useEffect(() => {
+        const handlePageShow = () => setLoadingProvider(null);
+        window.addEventListener('pageshow', handlePageShow);
+        return () => window.removeEventListener('pageshow', handlePageShow);
+    }, []);
+
+    const handleClick = (provider) => {
+        setLoadingProvider(provider);
+        onProvider(provider, mode);
+    };
+
     return (
         <div className="soc">
-            <button type="button" className="soc-btn" disabled={disabled} onClick={() => onProvider('google')}>
-                <Google /> {verb} with Google
+            <button
+                type="button"
+                className="soc-btn"
+                disabled={disabled || !!loadingProvider}
+                onClick={() => handleClick('google')}
+            >
+                {loadingProvider === 'google' ? <span className="auth-spin" aria-hidden="true" /> : <Google />}
+                {loadingProvider === 'google' ? 'Redirecting…' : `${verb} with Google`}
             </button>
-            <button type="button" className="soc-btn" disabled={disabled} onClick={() => onProvider('github')}>
-                <GitHub /> {verb} with GitHub
+            <button
+                type="button"
+                className="soc-btn"
+                disabled={disabled || !!loadingProvider}
+                onClick={() => handleClick('github')}
+            >
+                {loadingProvider === 'github' ? <span className="auth-spin" aria-hidden="true" /> : <GitHub />}
+                {loadingProvider === 'github' ? 'Redirecting…' : `${verb} with GitHub`}
             </button>
         </div>
     );

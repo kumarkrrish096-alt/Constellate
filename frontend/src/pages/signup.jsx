@@ -1,17 +1,54 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import AuthLayout from '../auth/AuthLayout';
 import { Field, PasswordField } from '../auth/field';
 import SocialButtons, { Divider } from '../auth/SocialButtons';
 import { validateSignUp, checks, strength } from '../auth/validate';
-import { signUpWithEmail, signInWithProvider, AuthNotConnectedError } from '../auth/AuthService';
+import { signUpWithEmail, signInWithProvider, AuthError } from '../auth/AuthService';
 
 export default function SignUp() {
-    const [v, setV] = useState({ name: '', email: '', password: '', confirm: '' });
+    const [v, setV] = useState(() => {
+        try {
+            const saved = sessionStorage.getItem('constellate_signup_draft');
+            if (saved) return JSON.parse(saved);
+        } catch (e) {}
+        return { name: '', email: '', password: '', confirm: '' };
+    });
     const [err, setErr] = useState({});
     const [busy, setBusy] = useState(false);
     const [msg, setMsg] = useState('');
+    const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const s = strength(v.password);
+
+    // Preserve written credentials across page reloads
+    useEffect(() => {
+        try {
+            sessionStorage.setItem('constellate_signup_draft', JSON.stringify(v));
+        } catch (e) {}
+    }, [v]);
+
+    // Reset busy state if user navigates back using browser Back button
+    useEffect(() => {
+        const handlePageShow = () => setBusy(false);
+        window.addEventListener('pageshow', handlePageShow);
+        return () => window.removeEventListener('pageshow', handlePageShow);
+    }, []);
+
+    // Handle URL error message and remove it from URL so reload clears it
+    useEffect(() => {
+        const error = searchParams.get('error');
+        if (error) {
+            setMsg(error);
+            const url = new URL(window.location.href);
+            url.searchParams.delete('error');
+            window.history.replaceState(
+                {},
+                '',
+                url.pathname + (url.searchParams.toString() ? '?' + url.searchParams.toString() : '')
+            );
+        }
+    }, [searchParams]);
 
     const set = (k) => (e) => {
         setV((x) => ({ ...x, [k]: e.target.value }));
@@ -20,10 +57,14 @@ export default function SignUp() {
 
     const run = async (fn) => {
         setBusy(true); setMsg('');
-        try { await fn(); }
+        try {
+            await fn();
+            try { sessionStorage.removeItem('constellate_signup_draft'); } catch (e) {}
+            navigate('/');
+        }
         catch (e) {
-            setMsg(e instanceof AuthNotConnectedError
-                ? 'Sign-up isn’t connected to a server yet, so no account was created.'
+            setMsg(e instanceof AuthError
+                ? e.message
                 : 'Something went wrong. Please try again.');
         } finally { setBusy(false); }
     };
@@ -66,7 +107,14 @@ export default function SignUp() {
                 </button>
             </form>
             <Divider>Or sign up with</Divider>
-            <SocialButtons mode="signup" disabled={busy} onProvider={(p) => run(() => signInWithProvider(p))} />
+            <SocialButtons
+                mode="signup"
+                disabled={busy}
+                onProvider={(p, m) => {
+                    setMsg('');
+                    signInWithProvider(p, m || 'signup');
+                }}
+            />
         </AuthLayout>
     );
 }
