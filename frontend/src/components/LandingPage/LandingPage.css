@@ -4,18 +4,18 @@
 
 /* ---------- Theme tokens (dark only) ---------- */
 :root {
-  --bg: #140C0B;
-  --bg2: #21130F;
+  --bg: #0E0607;
+  --bg2: #1B0A0C;
   --ink: #EADFC8;
   --mute: #BBA995;
   --red: #C4202E;
   --gold: #C9A24B;
   --spark: #FF3B30;
-  --veil: rgba(20, 12, 11, .88);
-  --scrim: 20, 12, 11;
-  --line: rgba(201, 162, 75, .4);
-  --g1: #21130F;
-  --g2: #140C0B;
+  --veil: rgba(14, 6, 7, .88);
+  --scrim: 14, 6, 7;
+  --line: rgba(196, 32, 46, .4);
+  --g1: #1B0A0C;
+  --g2: #0E0607;
   --title: #FFFFFF;
   color-scheme: dark;
   box-sizing: border-box;
@@ -38,12 +38,33 @@ html, body {
 }
 
 body {
-  background: radial-gradient(ellipse at 50% 40%, var(--g1), var(--g2) 85%);
+  background: radial-gradient(ellipse 70% 50% at 50% 35vh, var(--g1), var(--g2) 80%), var(--g2);
+}
+
+/* ---------- Hero section container ---------- */
+.landing-page {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.landing-page::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 160px;
+  background: linear-gradient(to bottom, transparent, var(--g2));
+  pointer-events: none;
+  z-index: 3;
 }
 
 /* ---------- Canvas layers ---------- */
 .landing-canvas {
-  position: fixed;
+  position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
@@ -55,7 +76,7 @@ body {
 }
 
 #flash {
-  position: fixed;
+  position: absolute;
   inset: 0;
   background: radial-gradient(circle, var(--bg), var(--gold));
   opacity: 0;
@@ -72,7 +93,7 @@ body.nogl #gl {
 
 /* ---------- Top bar ---------- */
 .top {
-  position: fixed;
+  position: absolute;
   top: calc(env(safe-area-inset-top, 0px) + 18px);
   left: 24px;
   right: 24px;
@@ -97,7 +118,7 @@ body.nogl #gl {
 
 /* ---------- Hero content ---------- */
 .content {
-  position: fixed;
+  position: absolute;
   inset: 0;
   display: flex;
   flex-direction: column;
@@ -176,7 +197,7 @@ body.nogl #gl {
 
 /* ---------- Floating labels ---------- */
 .lbl {
-  position: fixed;
+  position: absolute;
   left: 0;
   top: 0;
   z-index: 2;
@@ -205,7 +226,7 @@ body.nogl #gl {
 
 /* ---------- Tooltip ---------- */
 #tip {
-  position: fixed;
+  position: absolute;
   left: 0;
   top: 0;
   z-index: 4;
@@ -221,7 +242,7 @@ body.nogl #gl {
 
 /* ---------- Toast ---------- */
 #toast {
-  position: fixed;
+  position: absolute;
   left: 50%;
   bottom: calc(env(safe-area-inset-bottom, 0px) + 74px);
   transform: translateX(-50%);
@@ -237,7 +258,7 @@ body.nogl #gl {
 
 /* ---------- Bottom bar ---------- */
 .bot {
-  position: fixed;
+  position: absolute;
   left: 24px;
   right: 24px;
   bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);

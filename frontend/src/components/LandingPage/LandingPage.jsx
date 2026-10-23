@@ -72,12 +72,6 @@ export default function LandingPage() {
       <canvas id="fx" className="landing-canvas" ref={fxRef} />
       <div id="flash" ref={flashRef} />
 
-      {/* Top bar */}
-      <header className="top">
-        <div className="mark">Constellate</div>
-
-      </header>
-
       {/* Hero */}
       <main className="content">
         <h1>Every codebase is a constellation.</h1>

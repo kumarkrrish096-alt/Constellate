@@ -1,0 +1,20 @@
+@import url('https://fonts.googleapis.com/css2?family=Pirata+One&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=JetBrains+Mono&display=swap');
+
+/* Design tokens: identical values to your original HTML, scoped to .cx so they never touch the hero */
+.cx{--bg:#E8DCC4;--bg2:#D9C9A8;--ink:#1A1210;--mute:#4A3A33;--red:#8B0F1A;--gold:#7A1620;--spark:#FF3B30;--scrim:232,220,196;--line:rgba(139,15,26,.6);--g1:#E8DCC4;--g2:#D9C9A8;--title:#1A1210;
+  color:var(--ink);font-family:'Cormorant Garamond',Georgia,serif}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .cx{--bg:#0E0607;--bg2:#1B0A0C;--ink:#EADFC8;--mute:#BBA995;--red:#C4202E;--gold:#B8323A;--scrim:14,6,7;--line:rgba(196,32,46,.4);--g1:#1B0A0C;--g2:#0E0607;--title:#FFFFFF}}
+:root[data-theme="dark"] .cx{--bg:#0E0607;--bg2:#1B0A0C;--ink:#EADFC8;--mute:#BBA995;--red:#C4202E;--gold:#B8323A;--scrim:14,6,7;--line:rgba(196,32,46,.4);--g1:#1B0A0C;--g2:#0E0607;--title:#FFFFFF}
+
+/* Some landing/hero stylesheets lock the page with overflow:hidden; these routes need to scroll */
+html.cx-scroll,body.cx-scroll{overflow-x:hidden!important;overflow-y:auto!important;height:auto!important;min-height:100%}
+html.cx-scroll #root{height:auto!important;overflow:visible!important}
+
+.cx-logo{display:block;flex:none;aspect-ratio:1;background:var(--red);-webkit-mask:var(--logo) center/contain no-repeat;mask:var(--logo) center/contain no-repeat;filter:drop-shadow(0 0 3px rgba(255,59,48,.3))}
+
+.cx-btn{display:inline-block;font:400 1.15rem/1 'Pirata One',Georgia,serif;letter-spacing:.04em;text-decoration:none;text-align:center;cursor:pointer;padding:9px 20px;border-radius:2px;border:1px solid var(--gold);transition:filter .2s,box-shadow .2s,border-color .2s,color .2s}
+.cx-btn:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.cx-btn.ghost{color:var(--ink);background:none}
+.cx-btn.ghost:hover{border-color:var(--red);color:var(--spark)}
+.cx-btn.solid{color:#EADFC8;background:radial-gradient(circle at 35% 30%,#D02A38,#8B0F1A 55%,#4D0810)}
+.cx-btn.solid:hover{filter:brightness(1.15);box-shadow:0 0 14px rgba(255,59,48,.55)}
