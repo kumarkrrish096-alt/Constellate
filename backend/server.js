@@ -1,12 +1,13 @@
-import express from "express"
 import "dotenv/config";
+import express from "express"
 import cors from "cors";
+
+import jobstatusrouter from "./routes/jobstatus.js"
 
 import { connectdb } from "./db/connect.js";
 import healthrouter from "./routes/health.js";
 import analyzerouter from "./routes/analyze.js";
-import { createindexes } from "./db/indexes.js";
-
+import snapshotsrouter from "./routes/snapshots.js";
 
 const app=express();
 const PORT=process.env.PORT || 5000;
@@ -16,14 +17,14 @@ app.use(express.json());
 
 
 
-app.get("/health", healthrouter);
+app.use("/health", healthrouter);
 app.use("/api/analyze", analyzerouter);
-
+app.use("/api/jobs", jobstatusrouter);
+app.use("/api/snapshots", snapshotsrouter);
 
 
 try {
-  await connectdb();
-  await createindexes();
+ await connectdb();
   app.listen(PORT, () => {
     console.log(`Backend is running on http://localhost:${PORT}`);
   });

@@ -1,24 +1,19 @@
-import { MongoClient } from "mongodb";
+import mongoose from "mongoose"
 
-let client;
-let database;
+import Job from "../models/job.js"
 
-export async function connectdb() {
-  if (database) {
-    return database;
-  }
+import Repository from "../models/repository.js"
 
-  client = new MongoClient(process.env.MONGODB_URI);
-  await client.connect();
-  database = client.db(process.env.DB_NAME);
+import  Snapshot from "../models/snapshot.js"
 
-  console.log("Connected to MongoDB");
-  return database;
-}
+export async function connectdb(){
+    await mongoose.connect(process.env.MONGODB_URI,{
+        dbName:process.env.DB_NAME
+    })
 
-export function getdb() {
-  if (!database) {
-    throw new Error("Database not connected yet");
-  }
-  return database;
+
+
+    await Promise.all( [ Repository.init() , Job.init() , Snapshot.init() ] )
+
+    console.log("connected to mongodb");
 }
