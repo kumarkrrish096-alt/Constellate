@@ -11,6 +11,7 @@ import snapshotsrouter from "./routes/snapshots.js";
 import authrouter from "./routes/auth.js";
 import oauthrouter from "./routes/oauth.js";
 import { requireauth } from "./middleware/auth.js";
+import { analyzelimiter } from "./middleware/ratelimit.js";
 
 const app=express();
 const PORT=process.env.PORT || 5000;
@@ -25,10 +26,15 @@ app.use("/health", healthrouter);
 app.use("/api/auth", authrouter);
 app.use("/api/auth", oauthrouter);
 
+// Jobs and snapshots describe public repositories, so they stay public:
+// the browser's EventSource cannot send an Authorization header, and
+// snapshots must be cacheable by a CDN.
+app.use("/api/jobs", jobstatusrouter);
+app.use("/api/snapshots", snapshotsrouter);
+
 // Protected routes (require valid JWT)
-app.use("/api/analyze", requireauth, analyzerouter);
-app.use("/api/jobs", requireauth, jobstatusrouter);
-app.use("/api/snapshots", requireauth, snapshotsrouter);
+// Starting an analysis needs an account, which is what the rate limit counts against.
+app.use("/api/analyze", requireauth, analyzelimiter, analyzerouter);
 
 
 try {
