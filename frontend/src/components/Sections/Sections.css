@@ -1,0 +1,85 @@
+/* Process / Features / About / AuthNav. Ported from your HTML; every class is cx-prefixed so nothing collides with LandingPage.css */
+.cx-top{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;justify-content:space-between;align-items:center;pointer-events:none;
+  padding:calc(env(safe-area-inset-top,0px) + 18px) 24px 12px;border-bottom:1px solid transparent;transition:background .3s ease,border-color .3s ease,padding .3s ease,opacity .6s}
+.cx-top.scrolled{padding-top:calc(env(safe-area-inset-top,0px) + 12px);padding-bottom:12px;background:rgba(var(--scrim),.75);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-bottom-color:var(--line)}
+.cx-mark{display:flex;align-items:center;gap:12px;font:400 1.7rem/1 "Pirata One",Georgia,serif;letter-spacing:.02em;color:var(--title);text-decoration:none;pointer-events:auto}
+.cx-mark .cx-logo{width:clamp(28px,3.5vw,32px);height:clamp(28px,3.5vw,32px)}
+.cx-auth{display:flex;align-items:center;gap:10px;pointer-events:auto;margin-left:auto}
+body.casting .cx-top{opacity:0;pointer-events:none}
+@media (max-width:480px){.cx-top{padding-left:14px;padding-right:14px}.cx-mark{font-size:1.35rem;gap:8px}.cx-auth{gap:6px}.cx-auth .cx-btn{font-size:1rem;padding:7px 12px}}
+
+/* Shared starfield container */
+.cx-fx{position:relative;background:var(--g2);overflow:hidden}
+.cx-sky,.cx-skyx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;display:block;-webkit-mask-image:linear-gradient(transparent,#000 24vh);mask-image:linear-gradient(transparent,#000 24vh)}
+.cx-fx>:not(canvas){position:relative;z-index:1}
+@keyframes cx-twk{0%,100%{opacity:.35}50%{opacity:1}}
+.cx-sky{animation:cx-twk 3.4s ease-in-out infinite}
+.cx-skyx.l1{animation:cx-twk 4.9s ease-in-out -1.7s infinite}
+.cx-skyx.l2{animation:cx-twk 6.3s ease-in-out -3.9s infinite}
+
+.cx-sec{scroll-margin-top:40px}
+.cx-intro{padding:6vh 24px 8px;text-align:center}
+.cx-eyebrow{margin:0 0 10px;font:.78rem "JetBrains Mono",monospace;letter-spacing:.2em;text-transform:uppercase;color:var(--gold)}
+.cx-big,.cx-cap h2{font-family:"Pirata One",Georgia,serif;font-weight:400;color:var(--title);margin:0 0 12px;line-height:1.05}
+.cx-big{font-size:clamp(2.4rem,6vw,4.4rem);line-height:1;margin-bottom:18px;text-shadow:0 0 40px rgba(255,59,48,.25)}
+.cx-cap h2{font-size:clamp(1.9rem,3.6vw,2.6rem)}
+.cx-sub{max-width:34em;margin:0 auto 28px;font-size:clamp(1.1rem,2.2vw,1.35rem);line-height:1.5;color:var(--mute)}
+
+.cx-fr{max-width:1120px;margin:0 auto;padding:56px 24px;display:grid;grid-template-columns:5fr 7fr;gap:48px;align-items:center}
+.cx-fr.rev .cx-cap{order:2}
+.cx-cap p{margin:0 0 12px;font-size:1.25rem;line-height:1.5;color:var(--mute);max-width:26em}
+.cx-panel{position:relative;border:1px solid var(--line);background:rgba(var(--scrim),.55);border-radius:2px;box-shadow:0 0 40px rgba(139,15,26,.12);overflow:hidden}
+.cx-panel svg,.cx-panel canvas{display:block;width:100%;height:auto}
+.cx-panel canvas{aspect-ratio:560/320}
+.cx text{font-family:"JetBrains Mono",monospace;fill:var(--ink)}
+.cx .cx-m{fill:var(--mute)}
+@media (max-width:820px){.cx-fr,.cx-fr.rev{grid-template-columns:1fr;gap:24px;padding:36px 20px}.cx-fr.rev .cx-cap{order:0}}
+
+/* Scene animations (same keyframes as the HTML, renamed with cx- prefix) */
+.cx-scene:not(.in) *{animation-play-state:paused!important}
+.cx-ln,.cx-dr{fill:none;stroke-dasharray:1;stroke-dashoffset:1}
+.cx-chip{animation:cx-chip 8s infinite}.cx-fl{animation:cx-fl 8s infinite}
+.cx-st{animation:cx-st 8s infinite;transform-box:fill-box;transform-origin:center}
+.cx-cl{animation:cx-draw2 8s infinite}
+.cx-nd{animation:cx-pop 7s both infinite;transform-box:fill-box;transform-origin:center}
+.cx-ed{animation:cx-draw3 7s both infinite}
+.cx-hl{animation:cx-hl 7s both infinite;fill:var(--gold)}
+.cx-cn,.cx-hop{fill:var(--ink);opacity:.5}
+.cx-cn{animation:cx-glow 5s infinite;transform-box:fill-box;transform-origin:center}
+.cx-flow{animation:cx-flow 1.2s linear infinite}
+.cx-pulse{animation:cx-ripple 5s linear infinite;transform-box:fill-box;transform-origin:center}
+.cx-hop{animation:cx-lit 5s infinite;transform-box:fill-box;transform-origin:center}
+.cx-ring{animation:cx-spin 60s linear infinite;transform-origin:280px 160px}
+@keyframes cx-spin{to{transform:rotate(360deg)}}
+@keyframes cx-chip{0%,25%{opacity:1}40%,92%{opacity:.18}100%{opacity:1}}
+@keyframes cx-fl{0%,28%{transform:none;opacity:0}30%{opacity:1}55%{transform:translate(var(--dx),var(--dy));opacity:1}58%,100%{opacity:0;transform:translate(var(--dx),var(--dy))}}
+@keyframes cx-st{0%,52%{opacity:0;transform:scale(0)}60%{opacity:1;transform:scale(1.7)}66%,92%{opacity:1;transform:scale(1)}98%,100%{opacity:0}}
+@keyframes cx-draw2{0%,60%{stroke-dashoffset:1;opacity:1}76%,92%{stroke-dashoffset:0;opacity:1}98%,100%{stroke-dashoffset:0;opacity:0}}
+@keyframes cx-pop{0%{opacity:0;transform:scale(.6)}6%,86%{opacity:1;transform:none}94%,100%{opacity:0}}
+@keyframes cx-draw3{0%{stroke-dashoffset:1;opacity:1}8%,86%{stroke-dashoffset:0;opacity:1}94%,100%{stroke-dashoffset:0;opacity:0}}
+@keyframes cx-hl{0%{opacity:0}6%,60%{opacity:.3}70%,100%{opacity:0}}
+@keyframes cx-glow{0%{transform:scale(1);fill:var(--ink)}6%{transform:scale(1.6);fill:var(--spark)}30%{transform:scale(1.15);fill:var(--red)}60%,100%{transform:scale(1);fill:var(--ink)}}
+@keyframes cx-flow{to{stroke-dashoffset:-14}}
+@keyframes cx-ripple{0%{transform:scale(.05);opacity:.9}80%{transform:scale(1);opacity:0}100%{opacity:0}}
+@keyframes cx-lit{0%{opacity:.35;transform:scale(1);fill:var(--ink)}4%{opacity:1;transform:scale(1.7);fill:var(--spark)}30%{opacity:.95;transform:scale(1.2);fill:var(--red)}60%,100%{opacity:.35;transform:scale(1);fill:var(--ink)}}
+@media (prefers-reduced-motion:reduce){.cx *{animation:none!important}.cx-ln,.cx-dr,.cx-cl,.cx-ed{stroke-dashoffset:0}.cx-chip{opacity:.4}.cx-st,.cx-nd{opacity:1}.cx-pulse{opacity:0}}
+
+/* About */
+.cx-about{position:relative;background:var(--g2);overflow:hidden}
+.cx-about::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse 50% 50% at 50% 60%,rgba(196,32,46,.30),transparent 72%),radial-gradient(ellipse 90% 70% at 50% 100%,rgba(139,15,26,.30),transparent 70%);pointer-events:none}
+.cx-about::after{content:"";position:absolute;inset:0;box-shadow:inset 0 0 150px 30px rgba(var(--scrim),.75);pointer-events:none}
+.cx-ab-line{position:relative;z-index:2;height:2px;background:var(--gold);box-shadow:0 0 14px rgba(255,59,48,.45)}
+.cx-ab-in{position:relative;z-index:1;max-width:1000px;margin:0 auto;padding:clamp(40px,6vw,64px) 24px 28px}
+.cx-ab-sigil{display:flex;justify-content:center;margin:0 auto 20px}
+.cx-ab-sigil .cx-logo{width:clamp(140px,20vw,200px);animation:cx-spin 60s linear infinite;will-change:transform;filter:drop-shadow(0 0 4px rgba(255,59,48,.35))}
+.cx-ab-name{text-align:center;font:400 1.7rem/1 "Pirata One",Georgia,serif;letter-spacing:.02em;color:var(--title);margin-bottom:26px}
+.cx-ab-center{text-align:center}
+.cx-ab-center p:not(.cx-eyebrow){margin:0 auto;max-width:28em;font-size:1.3rem;line-height:1.55;color:var(--mute)}
+.cx-ab-nav{display:flex;justify-content:center;flex-wrap:wrap;margin-top:34px}
+.cx-ab-nav>*{position:relative;appearance:none;background:none;border:0;border-radius:0;padding:8px 24px;cursor:pointer;text-decoration:none;font:400 1.3rem/1 "Pirata One",Georgia,serif;letter-spacing:.04em;color:var(--ink);transition:color .2s,text-shadow .2s}
+.cx-ab-nav>*+*::before{content:"";position:absolute;left:0;top:25%;bottom:25%;width:1px;background:var(--line)}
+.cx-ab-nav>*:hover{color:var(--spark);text-shadow:0 0 12px rgba(255,59,48,.5)}
+.cx-ab-nav>*:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.cx-ab-rule{width:min(140px,40%);height:1px;margin:30px auto 24px;background:linear-gradient(90deg,transparent,var(--gold),transparent)}
+.cx-ab-fine{text-align:center;font:11px/1.9 "JetBrains Mono",monospace;letter-spacing:.2em;text-transform:uppercase;color:var(--mute);margin:0}
+@media (max-width:480px){.cx-ab-nav>*{padding:8px 14px;letter-spacing:.16em}.cx-ab-fine{letter-spacing:.12em}}

@@ -81,30 +81,6 @@ export default function LandingPage() {
       <canvas id="fx" className="landing-canvas" ref={fxRef} />
       <div id="flash" ref={flashRef} />
 
-      {/* Top bar */}
-      <header className="top">
-        <div className="mark">Constellate</div>
-        <nav className="top-nav">
-          {user ? (
-            <>
-              <span className="top-user">{user.name || user.email}</span>
-              <button type="button" className="top-link" onClick={handleLogout}>
-                Log out
-              </button>
-            </>
-          ) : (
-            <>
-              <Link to="/login" className="top-link">
-                Log in
-              </Link>
-              <Link to="/signup" className="top-link highlight">
-                Sign up
-              </Link>
-            </>
-          )}
-        </nav>
-      </header>
-
       {/* Hero */}
       <main className="content">
         <h1>Every codebase is a constellation.</h1>
