@@ -4,68 +4,65 @@ import Repository from "../models/repository.js"
 
 import Snapshot from "../models/snapshot.js";
 
-export async function findsnapshot(fullname,sha)
-{
-    return await  Snapshot.findone({fullname,sha}).lean();
+export async function findsnapshot(fullname, sha) {
+    return await Snapshot.findOne({ fullname, sha }).lean();
 };
 
-export async function saverepository(fullname,owner,repo)
-{
-    await repository.updateone(
+export async function saverepository(fullname, owner, repo) {
+    await Repository.updateOne(
         {
-            fullname 
+            fullname
         },
         {
             $setOnInsert:
             {
                 owner,
                 repo,
-                createdat:Date.now
+                createdat: Date.now
             },
             $set:
             {
-                lastsubmiitedat:Date.now()
+                lastsubmiitedat: Date.now()
             }
         },
         {
-            upsert:true
+            upsert: true
         }
 
     );
 }
 
-export async function createorgetajob(fullname,sha,branch)
-{
+export async function createorgetajob(fullname, sha, branch) {
     const filter = { fullname, sha };
 
-  try {
-    const result = await Job.updateOne(
-        {
-            filter
-        },
-        {
-            $setOnInsert: 
+    try {
+        const result = await Job.updateOne(
             {
-                branch,
-                status: "queued",
-                attempts: 0,
-                createdat: new Date(),
+                filter
             },
-        },
-        { 
-            upsert: true 
-        }
-    );
+            {
+                $setOnInsert:
+                {
+                    branch,
+                    status: "queued",
+                    attempts: 0,
+                    createdat: new Date(),
+                },
+            },
+            {
+                upsert: true
+            }
+        );
 
-    const job = await Job.findOne(filter).lean();
+        const job = await Job.findOne(filter).lean();
 
-    return { job, created: result.upsertedCount === 1 };
-  } 
-  catch (error) {
-    if (error.code === 11000) {
-      const job = await Job.findOne(filter).lean();
-      return { job, created: false };
+        return { job, created: result.upsertedCount === 1 };
     }
-    throw error;
-  }
+    catch (error) {
+        if (error.code === 11000) {
+            const job = await Job.findOne(filter).lean();
+            return { job, created: false };
+        }
+        throw error;
+    }
 }

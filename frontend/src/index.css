@@ -1,0 +1,8 @@
+/* Global resets — the landing page CSS handles its own theming */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
