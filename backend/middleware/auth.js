@@ -1,47 +1,40 @@
-import jwt from "jsonwebtoken";
+import Session from "../models/session.js";
 import User from "../models/user.js";
+import { verifyAccessToken } from "../services/session.js";
 
 /**
- * Authentication middleware that verifies the JWT and validates
- * that the user's session has not been revoked (via tokenVersion).
+ * Verifies the short-lived access token (Authorization: Bearer ...) and checks
+ * that its session still exists, so logging out a device takes effect at once
+ * rather than when the token expires.
  */
 export async function requireauth(req, res, next) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Authentication required. No token provided." });
+    return res.status(401).json({ error: "Authentication required." });
   }
 
-  const token = authHeader.split(" ")[1];
+  let payload;
+  try {
+    payload = verifyAccessToken(authHeader.slice("Bearer ".length));
+  } catch {
+    return res.status(401).json({ error: "Invalid or expired session token.", code: "token_expired" });
+  }
 
   try {
-    // 1. Verify token cryptographic signature
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    const [sessionExists, user] = await Promise.all([
+      Session.exists({ _id: payload.sid, userId: payload.sub }),
+      User.findById(payload.sub).select("email name").lean(),
+    ]);
 
-    // 2. Verify user still exists and check tokenVersion for session revocation
-    const user = await User.findById(payload.id).select("email name tokenVersion").lean();
-    if (!user) {
-      return res.status(401).json({ error: "User account no longer exists." });
+    if (!sessionExists || !user) {
+      return res.status(401).json({ error: "Session has ended. Please log in again.", code: "session_revoked" });
     }
 
-    // If tokenVersion in the token does not match the database, the session was revoked
-    if (
-      payload.tokenVersion !== undefined &&
-      user.tokenVersion !== undefined &&
-      payload.tokenVersion !== user.tokenVersion
-    ) {
-      return res.status(401).json({ error: "Session has expired or been revoked. Please log in again." });
-    }
-
-    // 3. Attach authenticated user details to request
-    req.user = {
-      id: user._id,
-      email: user.email,
-      name: user.name,
-    };
-
+    req.user = { id: user._id, email: user.email, name: user.name };
+    req.sessionId = payload.sid;
     next();
   } catch (error) {
-    return res.status(401).json({ error: "Invalid or expired session token." });
+    next(error);
   }
 }

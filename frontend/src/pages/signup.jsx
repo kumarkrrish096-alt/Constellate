@@ -4,15 +4,16 @@ import AuthLayout from '../auth/AuthLayout';
 import { Field, PasswordField } from '../auth/field';
 import SocialButtons, { Divider } from '../auth/SocialButtons';
 import { validateSignUp, checks, strength } from '../auth/validate';
-import { signUpWithEmail, signInWithProvider, AuthError } from '../auth/AuthService';
+import { signUpWithEmail, signInWithProvider, oauthErrorMessage, AuthError } from '../auth/AuthService';
 
 export default function SignUp() {
     const [v, setV] = useState(() => {
+        const blank = { name: '', email: '', password: '', confirm: '' };
         try {
-            const saved = sessionStorage.getItem('constellate_signup_draft');
-            if (saved) return JSON.parse(saved);
+            const saved = JSON.parse(sessionStorage.getItem('constellate_signup_draft'));
+            if (saved) return { ...blank, name: saved.name || '', email: saved.email || '' };
         } catch (e) {}
-        return { name: '', email: '', password: '', confirm: '' };
+        return blank;
     });
     const [err, setErr] = useState({});
     const [busy, setBusy] = useState(false);
@@ -21,12 +22,12 @@ export default function SignUp() {
     const [searchParams] = useSearchParams();
     const s = strength(v.password);
 
-    // Preserve written credentials across page reloads
+    // Preserve name and email across reloads. Passwords are never written to storage.
     useEffect(() => {
         try {
-            sessionStorage.setItem('constellate_signup_draft', JSON.stringify(v));
+            sessionStorage.setItem('constellate_signup_draft', JSON.stringify({ name: v.name, email: v.email }));
         } catch (e) {}
-    }, [v]);
+    }, [v.name, v.email]);
 
     // Reset busy state if user navigates back using browser Back button
     useEffect(() => {
@@ -39,9 +40,10 @@ export default function SignUp() {
     useEffect(() => {
         const error = searchParams.get('error');
         if (error) {
-            setMsg(error);
+            setMsg(oauthErrorMessage(error, searchParams.get('provider')));
             const url = new URL(window.location.href);
             url.searchParams.delete('error');
+            url.searchParams.delete('provider');
             window.history.replaceState(
                 {},
                 '',

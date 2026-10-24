@@ -1,122 +1,98 @@
+import crypto from "crypto";
 import { Router } from "express";
-import dotenv from "dotenv";
-import { handleGithubCallback, handleGoogleCallback } from "../services/oauth.js";
+import {
+  FRONTEND_URL,
+  OAUTH_COOKIE,
+  OAUTH_COOKIE_TTL_MS,
+  baseCookieOptions,
+} from "../config/auth.js";
+import {
+  buildAuthorizeUrl,
+  createOAuthAttempt,
+  fetchProviderProfile,
+  isProviderConfigured,
+  resolveOAuthUser,
+} from "../services/oauth.js";
+import { startSession } from "../services/session.js";
+import { oauthLimiter } from "../middleware/ratelimit.js";
 
 const router = Router();
 
-const getFrontendUrl = () => {
-  dotenv.config();
-  return process.env.FRONTEND_URL || "http://localhost:5173";
+// The provider redirects back with a cross-site top-level GET, which only
+// carries SameSite=Lax (or None) cookies, never Strict.
+const oauthCookieOptions = {
+  ...baseCookieOptions,
+  sameSite: baseCookieOptions.sameSite === "none" ? "none" : "lax",
 };
 
-const getBackendUrl = () => {
-  dotenv.config();
-  return process.env.BACKEND_URL || "http://localhost:5000";
-};
+// Errors travel to the frontend as fixed codes, never free text, so a crafted
+// link cannot make the login page display an attacker's message.
+function redirectWithError(res, mode, provider, code) {
+  const params = new URLSearchParams({ error: code, provider });
+  res.redirect(`${FRONTEND_URL}/${mode}?${params}`);
+}
 
-// ── Google OAuth Routes ─────────────────────────────────────
+const safeEqual = (a, b) =>
+  typeof a === "string" &&
+  typeof b === "string" &&
+  a.length === b.length &&
+  crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
-// Step 1: Redirect user to Google consent screen
-router.get("/google", (req, res) => {
-  dotenv.config();
-  const mode = req.query.mode === "signup" ? "signup" : "login";
-
-  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-    return res.redirect(
-      `${getFrontendUrl()}/${mode}?error=${encodeURIComponent(
-        "Google OAuth is not configured yet. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in backend/.env"
-      )}`
-    );
+function readAttempt(req) {
+  try {
+    return JSON.parse(req.cookies?.[OAUTH_COOKIE] || "null");
+  } catch {
+    return null;
   }
+}
 
-  const params = new URLSearchParams({
-    client_id: process.env.GOOGLE_CLIENT_ID,
-    redirect_uri: `${getBackendUrl()}/api/auth/google/callback`,
-    response_type: "code",
-    scope: "openid email profile",
-    access_type: "offline",
-    prompt: "consent",
-    state: mode,
+for (const provider of ["google", "github"]) {
+  // Step 1: send the browser to the provider's consent screen.
+  router.get(`/${provider}`, oauthLimiter, (req, res) => {
+    const mode = req.query.mode === "signup" ? "signup" : "login";
+
+    if (!isProviderConfigured(provider)) {
+      return redirectWithError(res, mode, provider, "oauth_not_configured");
+    }
+
+    const attempt = createOAuthAttempt();
+    res.cookie(
+      OAUTH_COOKIE,
+      JSON.stringify({ provider, mode, state: attempt.state, verifier: attempt.codeVerifier }),
+      { ...oauthCookieOptions, maxAge: OAUTH_COOKIE_TTL_MS }
+    );
+    res.redirect(buildAuthorizeUrl(provider, attempt));
   });
 
-  res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
-});
+  // Step 2: provider redirects back with ?code&state.
+  router.get(`/${provider}/callback`, oauthLimiter, async (req, res) => {
+    const attempt = readAttempt(req);
+    res.clearCookie(OAUTH_COOKIE, oauthCookieOptions);
 
-// Step 2: Google redirects back with code
-router.get("/google/callback", async (req, res) => {
-  dotenv.config();
-  const { code, state, error: googleError } = req.query;
-  const mode = state === "signup" ? "signup" : "login";
+    const mode = attempt?.mode === "signup" ? "signup" : "login";
+    const { code, state, error: providerError } = req.query;
 
-  if (googleError || !code) {
-    return res.redirect(`${getFrontendUrl()}/${mode}?error=Google+login+cancelled`);
-  }
+    if (providerError) {
+      const reason = providerError === "access_denied" ? "oauth_cancelled" : "oauth_failed";
+      return redirectWithError(res, mode, provider, reason);
+    }
 
-  try {
-    const data = await handleGoogleCallback(code, mode);
+    // State must match the value this browser was given in step 1. Otherwise
+    // the callback was started elsewhere (login CSRF) or the cookie expired.
+    if (!attempt || attempt.provider !== provider || !safeEqual(attempt.state, state) || !code) {
+      return redirectWithError(res, mode, provider, "oauth_state");
+    }
 
-    const query = new URLSearchParams({
-      token: data.token,
-      name: data.user?.name || "",
-      email: data.user?.email || "",
-      id: String(data.user?.id || ""),
-    });
-
-    res.redirect(`${getFrontendUrl()}/auth/callback?${query}`);
-  } catch (error) {
-    console.error("Google OAuth error:", error.message);
-    res.redirect(`${getFrontendUrl()}/${mode}?error=${encodeURIComponent(error.message)}`);
-  }
-});
-
-// ── GitHub OAuth Routes ─────────────────────────────────────
-
-router.get("/github", (req, res) => {
-  dotenv.config();
-  const mode = req.query.mode === "signup" ? "signup" : "login";
-
-  if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) {
-    return res.redirect(
-      `${getFrontendUrl()}/${mode}?error=${encodeURIComponent(
-        "GitHub OAuth is not configured. Please set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET in backend/.env"
-      )}`
-    );
-  }
-
-  const params = new URLSearchParams({
-    client_id: process.env.GITHUB_CLIENT_ID,
-    redirect_uri: `${getBackendUrl()}/api/auth/github/callback`,
-    scope: "read:user user:email",
-    state: mode,
+    try {
+      const profile = await fetchProviderProfile(provider, String(code), attempt.verifier);
+      const user = await resolveOAuthUser(provider, profile, mode);
+      await startSession(res, user, req);
+      res.redirect(`${FRONTEND_URL}/auth/callback`);
+    } catch (error) {
+      if (!error.code) console.error(`${provider} OAuth error:`, error);
+      redirectWithError(res, mode, provider, error.code || "oauth_failed");
+    }
   });
-
-  res.redirect(`https://github.com/login/oauth/authorize?${params}`);
-});
-
-router.get("/github/callback", async (req, res) => {
-  dotenv.config();
-  const { code, state } = req.query;
-  const mode = state === "signup" ? "signup" : "login";
-
-  if (!code) {
-    return res.redirect(`${getFrontendUrl()}/${mode}?error=GitHub+login+cancelled`);
-  }
-
-  try {
-    const data = await handleGithubCallback(code, mode);
-
-    const query = new URLSearchParams({
-      token: data.token,
-      name: data.user?.name || "",
-      email: data.user?.email || "",
-      id: String(data.user?.id || ""),
-    });
-
-    res.redirect(`${getFrontendUrl()}/auth/callback?${query}`);
-  } catch (error) {
-    console.error("GitHub OAuth error:", error.message);
-    res.redirect(`${getFrontendUrl()}/${mode}?error=${encodeURIComponent(error.message)}`);
-  }
-});
+}
 
 export default router;
