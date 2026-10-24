@@ -4,12 +4,15 @@ import Repository from "../models/repository.js"
 
 import Snapshot from "../models/snapshot.js";
 
+import { ANALYSIS_VERSION } from "../analysis/pipeline.js";
+
 // a failed job may be retried by a new request only after this long,
 // so a repo that always fails cannot keep the workers busy
 const RETRY_FAILED_AFTER_MS = 10 * 60 * 1000;
 
+// only snapshots made by the current analysis count; older ones get re-analysed
 export async function findsnapshot(fullname, sha) {
-    return await Snapshot.findOne({ fullname, sha }).lean();
+    return await Snapshot.findOne({ fullname, sha, version: ANALYSIS_VERSION }).lean();
 };
 
 export async function saverepository(fullname, owner, repo) {
@@ -147,6 +150,9 @@ export async function jobview(job) {
         sha: job.sha,
         attempts: job.attempts,
         queueposition: await queueposition(job),
+        // after a failed attempt: when the next try may start, and why the last one failed
+        retryat: job.status === "queued" && job.attempts > 0 ? job.nextrunat : null,
+        lasterror: job.status === "queued" && job.attempts > 0 ? job.error : null,
         snapshotUrl: job.status === "done" ? snapshoturl(job.fullname, job.sha) : null,
         createdat: job.createdat,
         updatedat: job.updatedat,
