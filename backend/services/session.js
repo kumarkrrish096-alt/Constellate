@@ -140,7 +140,7 @@ export async function refreshSession(req, res) {
       rotatedAt: new Date(now),
       lastUsedAt: new Date(now),
     },
-    { new: true }
+    { returnDocument: "after" }
   );
   if (updated) setRefreshCookie(res, nextToken, session.persistent !== false);
 

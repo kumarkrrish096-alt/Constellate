@@ -4,11 +4,17 @@ import Repository from "../models/repository.js"
 
 import Snapshot from "../models/snapshot.js";
 
+// a failed job may be retried by a new request only after this long,
+// so a repo that always fails cannot keep the workers busy
+const RETRY_FAILED_AFTER_MS = 10 * 60 * 1000;
+
 export async function findsnapshot(fullname, sha) {
     return await Snapshot.findOne({ fullname, sha }).lean();
 };
 
 export async function saverepository(fullname, owner, repo) {
+    const now = new Date();
+
     await Repository.updateOne(
         {
             fullname
@@ -18,11 +24,11 @@ export async function saverepository(fullname, owner, repo) {
             {
                 owner,
                 repo,
-                createdat: Date.now
+                createdat: now
             },
             $set:
             {
-                lastsubmiitedat: Date.now()
+                lastsubmittedat: now
             }
         },
         {
@@ -32,37 +38,117 @@ export async function saverepository(fullname, owner, repo) {
     );
 }
 
-export async function createorgetajob(fullname, sha, branch) {
+/**
+ * One job per (repo, sha). The unique index makes concurrent requests for the
+ * same commit share a job: the first upsert inserts it, the rest find it.
+ */
+export async function createorgetjob(fullname, sha, branch) {
     const filter = { fullname, sha };
+    const now = new Date();
+    let created = false;
 
     try {
         const result = await Job.updateOne(
-            {
-                filter
-            },
+            filter,
             {
                 $setOnInsert:
                 {
                     branch,
                     status: "queued",
+                    stage: "queued",
+                    progress: 0,
                     attempts: 0,
-                    createdat: new Date(),
+                    createdat: now,
+                    nextrunat: now,
+                    updatedat: now,
                 },
             },
             {
                 upsert: true
             }
         );
-
-        const job = await Job.findOne(filter).lean();
-
-        return { job, created: result.upsertedCount === 1 };
+        created = result.upsertedCount === 1;
     }
     catch (error) {
-        if (error.code === 11000) {
-            const job = await Job.findOne(filter).lean();
-            return { job, created: false };
-        }
-        throw error;
+        // two requests upserted at the same moment; the other one created the job
+        if (error.code !== 11000) throw error;
     }
+
+    let job = await Job.findOne(filter).lean();
+
+    if (job && await needsrequeue(job, now)) {
+        // conditional on the status we saw, so two requests cannot both requeue it
+        const requeued = await Job.findOneAndUpdate(
+            { _id: job._id, status: job.status },
+            {
+                $set:
+                {
+                    status: "queued",
+                    stage: "queued",
+                    progress: 0,
+                    error: null,
+                    attempts: 0,
+                    workerid: null,
+                    lockeduntil: null,
+                    startedat: null,
+                    finishedat: null,
+                    nextrunat: now,
+                    updatedat: now,
+                }
+            },
+            { returnDocument: "after" }
+        ).lean();
+
+        if (requeued) job = requeued;
+    }
+
+    return { job, created };
+}
+
+async function needsrequeue(job, now) {
+    if (job.status === "failed") {
+        const failedat = job.finishedat || job.updatedat || job.createdat;
+        return now - new Date(failedat) >= RETRY_FAILED_AFTER_MS;
+    }
+
+    // "done" but its snapshot is gone (deleted or lost), so analyse again
+    if (job.status === "done") {
+        return !(await findsnapshot(job.fullname, job.sha));
+    }
+
+    return false;
+}
+
+/** 1 = next to be picked up. null when the job is not waiting in the queue. */
+export async function queueposition(job) {
+    if (job.status !== "queued") return null;
+
+    const ahead = await Job.countDocuments({
+        status: "queued",
+        nextrunat: { $lt: job.nextrunat },
+    });
+
+    return ahead + 1;
+}
+
+export function snapshoturl(fullname, sha) {
+    return `/api/snapshots/${fullname}/${sha}`;
+}
+
+/** The job fields the frontend sees (no lock or worker internals). */
+export async function jobview(job) {
+    return {
+        jobId: job._id,
+        status: job.status,
+        stage: job.stage,
+        progress: job.progress,
+        error: job.status === "failed" ? job.error : null,
+        fullname: job.fullname,
+        sha: job.sha,
+        attempts: job.attempts,
+        queueposition: await queueposition(job),
+        snapshotUrl: job.status === "done" ? snapshoturl(job.fullname, job.sha) : null,
+        createdat: job.createdat,
+        updatedat: job.updatedat,
+    };
 }

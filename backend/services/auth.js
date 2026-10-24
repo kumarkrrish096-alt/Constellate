@@ -166,7 +166,7 @@ export async function resetPasswordWithToken(rawToken, newPassword) {
   const user = await User.findOneAndUpdate(
     { passwordResetToken: sha256(rawToken), passwordResetExpires: { $gt: new Date() } },
     { passwordResetToken: null, passwordResetExpires: null },
-    { new: true }
+    { returnDocument: "after" }
   );
 
   if (!user) {

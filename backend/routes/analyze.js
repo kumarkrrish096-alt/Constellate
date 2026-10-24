@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 
-import { findsnapshot, saverepository, createorgetajob } from "../services/jobs.js";
+import { findsnapshot, saverepository, createorgetjob, jobview, snapshoturl } from "../services/jobs.js";
 import { getlatestcommit } from "../services/github.js";
 
 const router = Router();
@@ -20,7 +20,7 @@ const analyzeschema = z.object({
 router.post("/", async (req, res) => {
   const result = analyzeschema.safeParse(req.body);
 
-  if (!result.success) 
+  if (!result.success)
   {
     return res.status(400).json({ error: "please enter a valid github url" });
   }
@@ -34,32 +34,42 @@ router.post("/", async (req, res) => {
    {
         const info = await getlatestcommit(owner, repo);
 
-        await saverepository(info.fullname, owner, repo);  
+        await saverepository(info.fullname, owner, repo);
 
+        // cache hit: this exact commit was already analysed
         const snapshot = await findsnapshot(info.fullname, info.sha);
 
         if (snapshot) {
-        return res.json({ status: "ready", fullname: info.fullname, sha: info.sha });
+        return res.json({
+            status: "ready",
+            fullname: info.fullname,
+            sha: info.sha,
+            snapshotUrl: snapshoturl(info.fullname, info.sha),
+        });
         }
 
+        // cache miss: queue a job (or join the one already queued for this commit)
         const { job, created } = await createorgetjob(info.fullname, info.sha, info.branch);
 
         res.status(202).json(
             {
-                status: job.status,
-                jobId: job._id,
-                fullname: info.fullname,
-                sha: info.sha,
+                ...(await jobview(job)),
+                eventsUrl: `/api/jobs/${job._id}/events`,
                 newjob: created,
             });
-   } 
+   }
   catch (error) {
-    if (error.status === 404) 
+    if (error.status === 404)
     {
        return res.status(404).json({ error: "Repository not found, or it is private" });
     }
-    console.error("GitHub error:", error.message);
-    res.status(500).json({ error: "Could not reach GitHub, try again" });
+    if (error.status === 403 || error.status === 429)
+    {
+       // GitHub API rate limit (5,000 requests/hour with a token)
+       return res.status(503).json({ error: "GitHub rate limit reached, please try again in a few minutes" });
+    }
+    console.error("Analyze error:", error.message);
+    res.status(500).json({ error: "Could not start the analysis, try again" });
   }
 
 });
