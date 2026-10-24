@@ -96,7 +96,7 @@ export async function createorgetjob(fullname, sha, branch) {
                     updatedat: now,
                 }
             },
-            { new: true }
+            { returnDocument: "after" }
         ).lean();
 
         if (requeued) job = requeued;

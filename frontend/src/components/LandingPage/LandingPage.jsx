@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getUser, isLoggedIn, logout } from '../../auth/AuthService';
+import { getUser, isLoggedIn, logout, restoreSession } from '../../auth/AuthService';
 import { initAtlas } from './atlas';
 import './LandingPage.css';
 
@@ -13,9 +13,16 @@ import './LandingPage.css';
 export default function LandingPage() {
   const [user, setUser] = useState(() => (isLoggedIn() ? getUser() : null));
 
-  const handleLogout = () => {
-    logout();
+  // The cached user is only a hint for first paint; confirm with the server.
+  useEffect(() => {
+    let cancelled = false;
+    restoreSession().then((u) => { if (!cancelled) setUser(u); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleLogout = async () => {
     setUser(null);
+    await logout();
   };
 
   /* ── Refs for DOM elements the atlas needs ──────────── */
@@ -80,30 +87,6 @@ export default function LandingPage() {
       <canvas id="gl" className="landing-canvas" ref={glRef} />
       <canvas id="fx" className="landing-canvas" ref={fxRef} />
       <div id="flash" ref={flashRef} />
-
-      {/* Top bar */}
-      <header className="top">
-        <div className="mark">Constellate</div>
-        <nav className="top-nav">
-          {user ? (
-            <>
-              <span className="top-user">{user.name || user.email}</span>
-              <button type="button" className="top-link" onClick={handleLogout}>
-                Log out
-              </button>
-            </>
-          ) : (
-            <>
-              <Link to="/login" className="top-link">
-                Log in
-              </Link>
-              <Link to="/signup" className="top-link highlight">
-                Sign up
-              </Link>
-            </>
-          )}
-        </nav>
-      </header>
 
       {/* Hero */}
       <main className="content">

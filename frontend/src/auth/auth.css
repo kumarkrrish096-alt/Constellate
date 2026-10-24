@@ -88,12 +88,26 @@
 }
 
 .auth-mark {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
     font-family: 'Pirata One', Georgia, serif;
     font-size: 1.7rem;
     letter-spacing: .02em;
     color: var(--title);
     text-decoration: none;
+}
 
+.auth-mark-logo {
+    width: 32px;
+    height: 32px;
+    aspect-ratio: 1;
+    display: block;
+    flex: none;
+    background: var(--red);
+    -webkit-mask: var(--logo-url, url('../assets/constellate-logo.png')) center/contain no-repeat;
+    mask: var(--logo-url, url('../assets/constellate-logo.png')) center/contain no-repeat;
+    filter: drop-shadow(0 0 4px rgba(255, 59, 48, .35));
 }
 
 .auth-mark:focus-visible {
@@ -158,10 +172,15 @@
 }
 
 .auth-emblem {
-    width: 30px;
-    height: 30px;
-    color: var(--red);
-    margin-bottom: 10px
+    width: 44px;
+    height: 44px;
+    aspect-ratio: 1;
+    display: block;
+    margin-bottom: 14px;
+    background: var(--red);
+    -webkit-mask: var(--logo-url, url('../assets/constellate-logo.png')) center/contain no-repeat;
+    mask: var(--logo-url, url('../assets/constellate-logo.png')) center/contain no-repeat;
+    filter: drop-shadow(0 0 6px rgba(255, 59, 48, .4));
 }
 
 .auth-card h1 {

@@ -1,38 +1,20 @@
 import { useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { saveSession } from "../auth/AuthService";
+import { useNavigate } from "react-router-dom";
+import { completeOAuthSignIn } from "../auth/AuthService";
 
+// The backend has already set the httpOnly session cookie before redirecting
+// here; this page exchanges it for an access token. Nothing secret is in the URL.
 export default function AuthCallback() {
-  const [params] = useSearchParams();
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = params.get("token");
-    const error = params.get("error");
-
-    if (error) {
-      // OAuth failed — redirect to login with error message
-      navigate(`/login?error=${encodeURIComponent(error)}`, { replace: true });
-      return;
-    }
-
-    if (token) {
-      // Save session via AuthService
-      saveSession({
-        token,
-        user: {
-          id: params.get("id"),
-          name: params.get("name"),
-          email: params.get("email"),
-        },
-      });
-
-      // Redirect to home
-      navigate("/", { replace: true });
-    } else {
-      navigate("/login", { replace: true });
-    }
-  }, [params, navigate]);
+    let cancelled = false;
+    completeOAuthSignIn().then((user) => {
+      if (cancelled) return;
+      navigate(user ? "/" : "/login?error=session_failed", { replace: true });
+    });
+    return () => { cancelled = true; };
+  }, [navigate]);
 
   return (
     <div style={{

@@ -6,6 +6,8 @@ import Repository from "../models/repository.js"
 
 import  Snapshot from "../models/snapshot.js"
 
+import Session from "../models/session.js"
+
 import User from "../models/user.js"
 
 export async function connectdb(){
@@ -15,7 +17,7 @@ export async function connectdb(){
 
 
 
-    await Promise.all( [ Repository.init() , Job.init() , Snapshot.init() , User.init() ] )
+    await Promise.all( [ Repository.init() , Job.init() , Snapshot.init() , User.init() , Session.init() ] )
 
     console.log("connected to mongodb");
 }
