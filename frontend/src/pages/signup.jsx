@@ -4,6 +4,7 @@ import AuthLayout from '../auth/AuthLayout';
 import { Field, PasswordField } from '../auth/field';
 import SocialButtons, { Divider } from '../auth/SocialButtons';
 import { validateSignUp, checks, strength } from '../auth/validate';
+import { useAuth } from '../auth/AuthContext';
 import { signUpWithEmail, signInWithProvider, AuthError } from '../auth/AuthService';
 
 export default function SignUp() {
@@ -19,7 +20,15 @@ export default function SignUp() {
     const [msg, setMsg] = useState('');
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
+    const { isAuthenticated, loading } = useAuth();
     const s = strength(v.password);
+
+    // Redirect to dashboard if already authenticated
+    useEffect(() => {
+        if (!loading && isAuthenticated) {
+            navigate('/dashboard', { replace: true });
+        }
+    }, [isAuthenticated, loading, navigate]);
 
     // Preserve written credentials across page reloads
     useEffect(() => {
@@ -60,7 +69,7 @@ export default function SignUp() {
         try {
             await fn();
             try { sessionStorage.removeItem('constellate_signup_draft'); } catch (e) {}
-            navigate('/');
+            navigate('/dashboard', { replace: true });
         }
         catch (e) {
             setMsg(e instanceof AuthError

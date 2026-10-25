@@ -27,22 +27,26 @@ export default function AuthCallback() {
         },
       });
 
-      // Redirect to home
-      navigate("/", { replace: true });
+      // Redirect to dashboard
+      navigate("/dashboard", { replace: true });
     } else {
       navigate("/login", { replace: true });
     }
   }, [params, navigate]);
 
   return (
-    <div style={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      height: "100vh",
-      color: "#ccc",
-      fontFamily: "Inter, sans-serif",
-    }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        height: "100vh",
+        background: "#0E0607",
+        color: "#EADFC8",
+        fontFamily: "'Cormorant Garamond', Georgia, serif",
+        fontSize: "1.2rem",
+      }}
+    >
       Signing you in…
     </div>
   );

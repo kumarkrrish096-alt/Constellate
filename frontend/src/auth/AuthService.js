@@ -20,7 +20,7 @@ export class AuthNotConnectedError extends AuthError {
   }
 }
 
-// ── Token helpers ───────────────────────────────────────────
+// ── Token & Session helpers ─────────────────────────────────
 
 const TOKEN_KEY = "constellate_token";
 const USER_KEY = "constellate_user";
@@ -38,28 +38,76 @@ export function isLoggedIn() {
   return !!getToken();
 }
 
-export async function logout() {
-  const token = getToken();
-  if (token) {
-    try {
-      await fetch(`${API}/api/auth/logout`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-    } catch (e) {
-      console.warn("Logout session revocation notification failed:", e);
-    }
+export function saveSession(data) {
+  if (data?.token) {
+    localStorage.setItem(TOKEN_KEY, data.token);
   }
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
+  if (data?.user) {
+    localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("constellate_auth", { detail: data?.user || null })
+    );
+  }
 }
 
-export function saveSession(data) {
-  localStorage.setItem(TOKEN_KEY, data.token);
-  localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+export function clearSession() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("constellate_auth", { detail: null })
+    );
+  }
+}
+
+/**
+ * Validate and restore session on page reload or app start.
+ * Resolves to the user object if authenticated, or null.
+ */
+export async function restoreSession() {
+  const token = getToken();
+  if (!token) {
+    clearSession();
+    return null;
+  }
+
+  try {
+    const profile = await getCurrentUserProfile();
+    if (profile) {
+      const current = getUser();
+      const updated = {
+        ...current,
+        ...(profile.user || profile),
+      };
+      saveSession({ token, user: updated });
+      return updated;
+    }
+    return null;
+  } catch {
+    // On network failure, fallback to cached user to avoid jarring logouts
+    return getUser();
+  }
+}
+
+/**
+ * Helper to complete OAuth sign-in with query params or user data.
+ */
+export async function completeOAuthSignIn(params) {
+  if (params) {
+    const token = typeof params.get === "function" ? params.get("token") : params.token;
+    if (token) {
+      const user = {
+        id: typeof params.get === "function" ? params.get("id") : params.id,
+        name: typeof params.get === "function" ? params.get("name") : params.name,
+        email: typeof params.get === "function" ? params.get("email") : params.email,
+      };
+      saveSession({ token, user });
+      return user;
+    }
+  }
+  return restoreSession();
 }
 
 // ── Authentication API Calls ────────────────────────────────
@@ -71,7 +119,7 @@ export const signUpWithEmail = async ({ name, email, password }) => {
     body: JSON.stringify({ name, email, password }),
   });
 
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
     throw new AuthError(data.error || "Signup failed", data.errors);
@@ -88,7 +136,7 @@ export const signInWithEmail = async ({ email, password }) => {
     body: JSON.stringify({ email, password }),
   });
 
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
     throw new AuthError(data.error || "Login failed", data.errors);
@@ -104,6 +152,25 @@ export const signInWithProvider = (provider, mode = "login") => {
   window.location.href = url;
 };
 
+// Sign out of current device session
+export async function logout() {
+  const token = getToken();
+  if (token) {
+    try {
+      await fetch(`${API}/api/auth/logout`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+    } catch (e) {
+      console.warn("Logout session revocation notification failed:", e);
+    }
+  }
+  clearSession();
+}
+
 // ── Password Recovery & Profile Management ──────────────────
 
 export const requestPasswordReset = async (email) => {
@@ -113,7 +180,7 @@ export const requestPasswordReset = async (email) => {
     body: JSON.stringify({ email }),
   });
 
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
     throw new AuthError(data.error || "Password reset request failed");
@@ -129,7 +196,7 @@ export const resetPassword = async (token, newPassword) => {
     body: JSON.stringify({ token, newPassword }),
   });
 
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
     throw new AuthError(data.error || "Password reset failed");
@@ -142,17 +209,51 @@ export const getCurrentUserProfile = async () => {
   const token = getToken();
   if (!token) return null;
 
-  const res = await fetch(`${API}/api/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  try {
+    const res = await fetch(`${API}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
 
-  if (!res.ok) {
-    if (res.status === 401) {
-      localStorage.removeItem(TOKEN_KEY);
-      localStorage.removeItem(USER_KEY);
+    if (!res.ok) {
+      if (res.status === 401) {
+        clearSession();
+      }
+      return null;
     }
+
+    return await res.json().catch(() => null);
+  } catch {
     return null;
   }
-
-  return res.json();
 };
+
+export async function authFetch(path, options = {}) {
+  const token = getToken();
+  return fetch(`${API}${path}`, {
+    ...options,
+    headers: {
+      ...options.headers,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+}
+
+// ── Provider error mapping ──────────────────────────────────
+
+const PROVIDER_NAMES = { google: "Google", github: "GitHub" };
+
+export function oauthErrorMessage(code, provider) {
+  const p = PROVIDER_NAMES[provider] || "That provider";
+  const messages = {
+    oauth_cancelled: `${p} sign-in was cancelled.`,
+    oauth_state: "That sign-in attempt expired or was started in another browser. Please try again.",
+    oauth_failed: `${p} sign-in failed. Please try again.`,
+    oauth_not_configured: `${p} sign-in isn't set up on this server yet.`,
+    email_unverified: `Your ${p} account has no verified email address. Verify one with ${p}, then try again.`,
+    provider_conflict: `This email is already linked to a different ${p} account.`,
+    no_account: `No Constellate account found for this ${p} account. Please sign up first.`,
+    account_exists: `You already have an account with this ${p} email. Please log in instead.`,
+    session_failed: "We couldn't finish signing you in. Please try again.",
+  };
+  return messages[code] || code || "Sign-in failed. Please try again.";
+}

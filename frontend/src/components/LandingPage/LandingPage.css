@@ -92,7 +92,7 @@ body.nogl #gl {
 }
 
 /* ---------- Top bar ---------- */
-.top {
+.landing-page .top {
   position: absolute;
   top: calc(env(safe-area-inset-top, 0px) + 18px);
   left: 24px;
@@ -104,19 +104,19 @@ body.nogl #gl {
   z-index: 3;
 }
 
-.mark {
+.landing-page .mark {
   font-family: 'Pirata One', Georgia, serif;
   font-size: 1.7rem;
   letter-spacing: .02em;
   color: var(--title);
 }
 
-.meta {
+.landing-page .meta {
   color: var(--mute);
   font-size: 1rem;
 }
 
-.top-nav {
+.landing-page .top-nav {
   display: flex;
   align-items: center;
   gap: 16px;
@@ -125,13 +125,13 @@ body.nogl #gl {
   font-size: 0.9rem;
 }
 
-.top-user {
+.landing-page .top-user {
   color: var(--ink);
   opacity: 0.9;
   letter-spacing: 0.02em;
 }
 
-.top-link {
+.landing-page .top-link {
   color: var(--mute);
   text-decoration: none;
   background: none;
@@ -142,11 +142,11 @@ body.nogl #gl {
   transition: color 0.2s ease, opacity 0.2s ease;
 }
 
-.top-link:hover {
+.landing-page .top-link:hover {
   color: var(--ink);
 }
 
-.top-link.highlight {
+.landing-page .top-link.highlight {
   color: var(--bg);
   background: var(--gold);
   padding: 6px 14px;
@@ -155,12 +155,12 @@ body.nogl #gl {
   letter-spacing: 0.02em;
 }
 
-.top-link.highlight:hover {
+.landing-page .top-link.highlight:hover {
   opacity: 0.9;
 }
 
 /* ---------- Hero content ---------- */
-.content {
+.landing-page .content {
   position: absolute;
   inset: 0;
   display: flex;
@@ -174,7 +174,7 @@ body.nogl #gl {
   transition: opacity .6s, transform 1s;
 }
 
-.content::before {
+.landing-page .content::before {
   content: "";
   position: absolute;
   width: min(900px, 120vw);
@@ -184,7 +184,7 @@ body.nogl #gl {
   transition: opacity 1.5s;
 }
 
-.content h1 {
+.landing-page .content h1 {
   font-family: 'Pirata One', Georgia, serif;
   font-weight: 400;
   font-size: clamp(2.6rem, 7.4vw, 5.6rem);
@@ -194,7 +194,7 @@ body.nogl #gl {
   text-shadow: 0 0 40px rgba(255, 59, 48, .25);
 }
 
-.sub {
+.landing-page .sub {
   max-width: 34em;
   margin: 0 0 28px;
   font-size: clamp(1.1rem, 2.2vw, 1.35rem);
@@ -239,7 +239,7 @@ body.nogl #gl {
 }
 
 /* ---------- Floating labels ---------- */
-.lbl {
+.landing-page .lbl {
   position: absolute;
   left: 0;
   top: 0;
@@ -255,20 +255,20 @@ body.nogl #gl {
   white-space: nowrap;
 }
 
-#lGod {
+.landing-page #lGod {
   border-color: var(--gold);
 }
 
-.lbl.on {
+.landing-page .lbl.on {
   opacity: .5;
 }
 
-.lbl.near {
+.landing-page .lbl.near {
   opacity: 1;
 }
 
 /* ---------- Tooltip ---------- */
-#tip {
+.landing-page #tip {
   position: absolute;
   left: 0;
   top: 0;
@@ -284,7 +284,7 @@ body.nogl #gl {
 }
 
 /* ---------- Toast ---------- */
-#toast {
+.landing-page #toast {
   position: absolute;
   left: 50%;
   bottom: calc(env(safe-area-inset-bottom, 0px) + 74px);
@@ -300,7 +300,7 @@ body.nogl #gl {
 }
 
 /* ---------- Bottom bar ---------- */
-.bot {
+.landing-page .bot {
   position: absolute;
   left: 24px;
   right: 24px;
@@ -314,14 +314,14 @@ body.nogl #gl {
   transition: opacity .6s;
 }
 
-.legend {
+.landing-page .legend {
   display: grid;
   gap: 4px;
   font-size: .95rem;
   color: var(--mute);
 }
 
-.legend i {
+.landing-page .legend i {
   display: inline-block;
   width: 9px;
   height: 9px;
@@ -329,19 +329,19 @@ body.nogl #gl {
   margin-right: 8px;
 }
 
-.right {
+.landing-page .right {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 8px;
 }
 
-.right .row {
+.landing-page .right .row {
   display: flex;
   gap: 8px;
 }
 
-#tel {
+.landing-page #tel {
   font: .78rem 'JetBrains Mono', monospace;
   color: var(--mute);
   border: 1px solid var(--line);
@@ -350,33 +350,33 @@ body.nogl #gl {
 }
 
 /* ---------- Casting state ---------- */
-body.casting .content,
-body.casting .bot,
-body.casting .top {
+body.casting .landing-page .content,
+body.casting .landing-page .bot,
+body.casting .landing-page .top {
   opacity: 0;
   pointer-events: none;
 }
 
-body.casting .content {
+body.casting .landing-page .content {
   transform: scale(1.08);
 }
 
-body.mand .content::before {
+body.mand .landing-page .content::before {
   opacity: .3;
 }
 
-body.mand h1 {
+body.mand .landing-page h1 {
   text-shadow: 0 0 28px rgb(var(--scrim)), 0 0 8px rgb(var(--scrim));
 }
 
-body.casting .lbl,
-body.casting #tip,
-body.casting #toast {
+body.casting .landing-page .lbl,
+body.casting .landing-page #tip,
+body.casting .landing-page #toast {
   display: none;
 }
 
 /* ---------- Done overlay ---------- */
-#done {
+.landing-page #done {
   position: fixed;
   inset: 0;
   z-index: 6;
@@ -389,11 +389,11 @@ body.casting #toast {
   background: var(--veil);
 }
 
-#done.on {
+.landing-page #done.on {
   display: flex;
 }
 
-#done h2 {
+.landing-page #done h2 {
   font-family: 'Pirata One', Georgia, serif;
   font-weight: 400;
   font-size: clamp(2rem, 5vw, 3.2rem);
@@ -401,30 +401,31 @@ body.casting #toast {
   color: var(--red);
 }
 
-#steps {
+.landing-page #steps {
   font: .9rem/1.9 'JetBrains Mono', monospace;
   color: var(--mute);
   text-align: left;
   margin: 18px 0;
 }
 
-#steps b {
+.landing-page #steps b {
   color: var(--gold);
   font-weight: 400;
 }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 640px) {
-  .bot {
+  .landing-page .bot {
     flex-direction: column;
     align-items: flex-start;
   }
 
-  .right {
+  .landing-page .right {
     align-items: flex-start;
   }
 
-  .meta {
+  .landing-page .meta {
     display: none;
   }
 }
+
