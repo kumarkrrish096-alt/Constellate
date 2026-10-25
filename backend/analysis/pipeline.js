@@ -9,10 +9,15 @@ export const ANALYSIS_VERSION = 1;
 /**
  * Turns one (repo, commit) into the data stored in its snapshot.
  *
- * PLACEHOLDER for Sections C and D: this only lists the commit's files and
- * languages through the GitHub API. Ingestion (clone or zip), Tree-sitter
- * parsing, graphs and metrics replace the body of this function; the worker
- * around it stays the same.
+ * PLACEHOLDER until Section C (ingestion): this only lists the commit's files
+ * and languages through the GitHub API. The full engine is analyzefolder()
+ * in ./analyze.js, but it needs the repository on disk. Once C clones the
+ * commit into a temp folder, this body becomes:
+ *
+ *   const snapshot = await analyzefolder(folder, { repo: { fullname, sha, branch }, issues: true, report });
+ *   return { version: ANALYSIS_VERSION, ...snapshot };   // and bump ANALYSIS_VERSION to 2
+ *
+ * The worker around it stays the same.
  *
  * `report(stage, progress)` updates the job's progress bar (0 to 100).
  * Throw an error with `retryable: false` for failures that will not go away
