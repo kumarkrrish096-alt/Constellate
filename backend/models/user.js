@@ -50,10 +50,6 @@ const userSchema = new mongoose.Schema(
       type: [identitySchema],
       default: [],
     },
-    tokenVersion: {
-      type: Number,
-      default: 0,
-    },
     // Password recovery fields (stores SHA-256 hash of token, never plaintext)
     passwordResetToken: {
       type: String,

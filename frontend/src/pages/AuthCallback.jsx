@@ -1,9 +1,10 @@
 import { useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { saveSession } from "../auth/AuthService";
+import { useNavigate } from "react-router-dom";
+import { completeOAuthSignIn } from "../auth/AuthService";
 
+// The backend has already set the httpOnly session cookie before redirecting
+// here; this page exchanges it for an access token. Nothing secret is in the URL.
 export default function AuthCallback() {
-  const [params] = useSearchParams();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -27,22 +28,26 @@ export default function AuthCallback() {
         },
       });
 
-      // Redirect to home
-      navigate("/", { replace: true });
+      // Redirect to dashboard
+      navigate("/dashboard", { replace: true });
     } else {
       navigate("/login", { replace: true });
     }
   }, [params, navigate]);
 
   return (
-    <div style={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      height: "100vh",
-      color: "#ccc",
-      fontFamily: "Inter, sans-serif",
-    }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        height: "100vh",
+        background: "#0E0607",
+        color: "#EADFC8",
+        fontFamily: "'Cormorant Garamond', Georgia, serif",
+        fontSize: "1.2rem",
+      }}
+    >
       Signing you in…
     </div>
   );

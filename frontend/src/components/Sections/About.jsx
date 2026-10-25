@@ -7,7 +7,7 @@ const goTo = (id) => (e) => {
   document.getElementById(id)?.scrollIntoView({ behavior: reduce ? "auto" : "smooth" })
 }
 
-export default function About() {
+export default function About({ showNav = true }) {
   return (
     <footer className="cx-about" id="about">
       <div className="cx-ab-line" />
@@ -22,13 +22,15 @@ export default function About() {
             cycles and measures blast radius, so you know where it is safe to step.
           </p>
         </div>
-        <nav className="cx-ab-nav" aria-label="Footer">
-          <a href="#process" onClick={goTo("process")}>Process</a>
-          <a href="#features" onClick={goTo("features")}>Features</a>
-          <Link to="/login">Login</Link>
-          <Link to="/signup">Sign up</Link>
-          <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" })}>Back to top</button>
-        </nav>
+        {showNav && (
+          <nav className="cx-ab-nav" aria-label="Footer">
+            <a href="#process" onClick={goTo("process")}>Process</a>
+            <a href="#features" onClick={goTo("features")}>Features</a>
+            <Link to="/login">Login</Link>
+            <Link to="/signup">Sign up</Link>
+            <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" })}>Back to top</button>
+          </nav>
+        )}
         <div className="cx-ab-rule" />
         <p className="cx-ab-fine">© 2026 Constellate · From the tangle of a thousand files, the stars are drawn.</p>
       </div>

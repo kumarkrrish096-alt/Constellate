@@ -1,37 +1,50 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import AuthLayout from '../auth/AuthLayout';
 import { Field, PasswordField } from '../auth/field';
 import SocialButtons, { Divider } from '../auth/SocialButtons';
 import { validateLogin } from '../auth/validate';
+import { useAuth } from '../auth/AuthContext';
 import {
     signInWithEmail,
     signInWithProvider,
     requestPasswordReset,
+    oauthErrorMessage,
     AuthError,
 } from '../auth/AuthService';
 
 export default function Login() {
     const [v, setV] = useState(() => {
+        const blank = { email: '', password: '', remember: true };
         try {
-            const saved = sessionStorage.getItem('constellate_login_draft');
-            if (saved) return JSON.parse(saved);
+            const saved = JSON.parse(sessionStorage.getItem('constellate_login_draft'));
+            if (saved) return { ...blank, email: saved.email || '', remember: saved.remember ?? true };
         } catch (e) {}
-        return { email: '', password: '', remember: true };
+        return blank;
     });
     const [err, setErr] = useState({});
     const [busy, setBusy] = useState(false);
     const [msg, setMsg] = useState('');
     const [msgType, setMsgType] = useState('error'); // 'error' or 'success'
     const navigate = useNavigate();
+    const location = useLocation();
     const [searchParams] = useSearchParams();
+    const { isAuthenticated, loading } = useAuth();
+    const from = location.state?.from?.pathname || '/dashboard';
 
-    // Preserve written credentials across page reloads
+    // Redirect to dashboard (or intended destination) if already authenticated
+    useEffect(() => {
+        if (!loading && isAuthenticated) {
+            navigate(from, { replace: true });
+        }
+    }, [isAuthenticated, loading, navigate, from]);
+
+    // Preserve the typed email across reloads. The password is never written to storage.
     useEffect(() => {
         try {
-            sessionStorage.setItem('constellate_login_draft', JSON.stringify(v));
+            sessionStorage.setItem('constellate_login_draft', JSON.stringify({ email: v.email, remember: v.remember }));
         } catch (e) {}
-    }, [v]);
+    }, [v.email, v.remember]);
 
     // Reset busy state if user navigates back using browser Back button
     useEffect(() => {
@@ -44,11 +57,12 @@ export default function Login() {
     useEffect(() => {
         const error = searchParams.get('error');
         if (error) {
-            setMsg(error);
+            setMsg(oauthErrorMessage(error, searchParams.get('provider')));
             setMsgType('error');
-            // Clean the error parameter from URL so it doesn't reappear on reload
+            // Clean the error parameters from URL so they don't reappear on reload
             const url = new URL(window.location.href);
             url.searchParams.delete('error');
+            url.searchParams.delete('provider');
             window.history.replaceState(
                 {},
                 '',
@@ -68,7 +82,7 @@ export default function Login() {
         try {
             await fn();
             try { sessionStorage.removeItem('constellate_login_draft'); } catch (e) {}
-            navigate('/');
+            navigate(from, { replace: true });
         }
         catch (e) {
             setMsgType('error');

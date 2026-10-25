@@ -1,218 +1,129 @@
 import crypto from "crypto";
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
 import User from "../models/user.js";
+import { BCRYPT_ROUNDS } from "../config/auth.js";
+import { publicUser, revokeAllUserSessions } from "./session.js";
 
-const SALT_ROUNDS = 10;
-const DUMMY_HASH = "$2b$10$wT8m9Lp9V5pD3h0d5k1Yk.1234567890123456789012345678901";
+// Compared against when the email is unknown, so "no such user" takes as long
+// as "wrong password" and response timing does not reveal registered emails.
+const dummyHash = bcrypt.hash("constellate-timing-equaliser", BCRYPT_ROUNDS);
 
-export function generatetoken(user) {
-  return jwt.sign(
-    {
-      id: user._id,
-      email: user.email,
-      tokenVersion: user.tokenVersion || 0,
-    },
-    process.env.JWT_SECRET,
-    { expiresIn: "7d" }
-  );
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+
+export function authError(status, message, code) {
+  const error = new Error(message);
+  error.status = status;
+  if (code) error.code = code;
+  return error;
 }
 
-export async function registeruser(name, email, password) {
-  const normalizedEmail = email.toLowerCase().trim();
+const normalizeEmail = (email) => email.toLowerCase().trim();
+const sha256 = (value) => crypto.createHash("sha256").update(value).digest("hex");
 
-  const existing = await User.findOne({ email: normalizedEmail }).lean();
+export async function registeruser(name, email, password) {
+  const normalizedEmail = normalizeEmail(email);
+
+  const existing = await User.exists({ email: normalizedEmail });
   if (existing) {
-    const error = new Error("An account with this email is already registered.");
-    error.status = 409;
-    throw error;
+    throw authError(409, "An account with this email is already registered.");
   }
 
-  const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+  const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
-  const user = await User.create({
-    name: name.trim(),
-    email: normalizedEmail,
-    password: hashedPassword,
-    emailVerified: false,
-    identities: [],
-    tokenVersion: 0,
-    provider: "local",
-  });
-
-  const token = generatetoken(user);
-
-  return {
-    token,
-    user: {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      providers: ["password"],
-    },
-  };
+  try {
+    return await User.create({
+      name: name.trim(),
+      email: normalizedEmail,
+      password: hashedPassword,
+      emailVerified: false,
+      identities: [],
+      provider: "local",
+    });
+  } catch (error) {
+    // Two signups for the same email racing past the check above.
+    if (error.code === 11000) {
+      throw authError(409, "An account with this email is already registered.");
+    }
+    throw error;
+  }
 }
 
 export async function loginuser(email, password) {
-  const normalizedEmail = email.toLowerCase().trim();
-  const user = await User.findOne({ email: normalizedEmail });
+  const user = await User.findOne({ email: normalizeEmail(email) });
+
+  if (!user || !user.password) {
+    await bcrypt.compare(password, await dummyHash);
+  }
 
   if (!user) {
-    await bcrypt.compare(password, DUMMY_HASH);
-    const error = new Error("Invalid email or password.");
-    error.status = 401;
-    throw error;
+    throw authError(401, "Invalid email or password.");
   }
 
   if (!user.password) {
-    const linkedProviders = user.identities?.length
-      ? user.identities.map((id) => id.provider).join(" or ")
-      : user.provider || "OAuth";
-
-    const error = new Error(
-      `This account uses ${linkedProviders} sign-in. Please log in with ${linkedProviders}.`
-    );
-    error.status = 401;
-    throw error;
+    const linked = (user.identities || []).map((id) => id.provider);
+    const names = linked.length ? linked.map(providerLabel).join(" or ") : "Google or GitHub";
+    throw authError(401, `This account signs in with ${names}. Use that button below.`);
   }
 
   const isValid = await bcrypt.compare(password, user.password);
   if (!isValid) {
-    const error = new Error("Invalid email or password.");
-    error.status = 401;
-    throw error;
+    throw authError(401, "Invalid email or password.");
   }
 
-  const token = generatetoken(user);
+  return user;
+}
 
-  const providers = [];
-  if (user.password) providers.push("password");
-  if (user.identities) {
-    user.identities.forEach((id) => providers.push(id.provider));
-  } else if (user.provider && user.provider !== "local") {
-    providers.push(user.provider);
-  }
-
-  return {
-    token,
-    user: {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      providers,
-    },
-  };
+export function providerLabel(provider) {
+  return { google: "Google", github: "GitHub", password: "email and password" }[provider] || provider;
 }
 
 export async function getUserIdentities(userId) {
   const user = await User.findById(userId);
-  if (!user) {
-    const error = new Error("User not found.");
-    error.status = 404;
-    throw error;
-  }
-
-  const providers = [];
-  if (user.password) providers.push("password");
-  if (user.identities?.length) {
-    user.identities.forEach((id) => {
-      if (!providers.includes(id.provider)) providers.push(id.provider);
-    });
-  } else if (user.provider && user.provider !== "local") {
-    providers.push(user.provider);
-  }
+  if (!user) throw authError(404, "User not found.");
 
   return {
-    id: user._id,
-    name: user.name,
-    email: user.email,
-    emailVerified: user.emailVerified,
+    ...publicUser(user),
     hasPassword: Boolean(user.password),
-    providers,
-    identities: user.identities || [],
+    identities: (user.identities || []).map(({ provider, email, linkedAt }) => ({
+      provider,
+      email,
+      linkedAt,
+    })),
   };
 }
 
 export async function linkPassword(userId, newPassword, currentPassword = null) {
   const user = await User.findById(userId);
-  if (!user) {
-    const error = new Error("User not found.");
-    error.status = 404;
-    throw error;
-  }
+  if (!user) throw authError(404, "User not found.");
 
   if (user.password) {
     if (!currentPassword) {
-      const error = new Error("Current password is required to change password.");
-      error.status = 400;
-      throw error;
+      throw authError(400, "Current password is required to change password.");
     }
     const match = await bcrypt.compare(currentPassword, user.password);
-    if (!match) {
-      const error = new Error("Incorrect current password.");
-      error.status = 401;
-      throw error;
-    }
+    if (!match) throw authError(401, "Incorrect current password.");
   }
 
-  user.password = await bcrypt.hash(newPassword, SALT_ROUNDS);
+  user.password = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
   await user.save();
 
-  return { message: "Password authentication linked successfully." };
-}
-
-export async function linkOAuthIdentity(userId, { provider, providerId, email }) {
-  const user = await User.findById(userId);
-  if (!user) {
-    const error = new Error("User not found.");
-    error.status = 404;
-    throw error;
-  }
-
-  const existingOwner = await User.findByIdentity(provider, providerId);
-  if (existingOwner && String(existingOwner._id) !== String(userId)) {
-    const error = new Error(
-      `This ${provider} account is already linked to another Constellate user.`
-    );
-    error.status = 409;
-    throw error;
-  }
-
-  const alreadyLinked = user.identities.some(
-    (id) => id.provider === provider && id.providerId === String(providerId)
-  );
-
-  if (!alreadyLinked) {
-    user.identities.push({
-      provider,
-      providerId: String(providerId),
-      email: email ? email.toLowerCase().trim() : null,
-      linkedAt: new Date(),
-    });
-    await user.save();
-  }
-
-  return { message: `${provider} linked successfully.` };
+  return { message: "Password saved." };
 }
 
 export async function unlinkIdentity(userId, providerToUnlink) {
   const user = await User.findById(userId);
-  if (!user) {
-    const error = new Error("User not found.");
-    error.status = 404;
-    throw error;
+  if (!user) throw authError(404, "User not found.");
+
+  if (!user.hasProvider(providerToUnlink)) {
+    throw authError(400, `${providerLabel(providerToUnlink)} is not linked to this account.`);
   }
 
-  const hasPassword = Boolean(user.password);
-  const oauthCount = user.identities?.length || (user.provider && user.provider !== "local" ? 1 : 0);
-  const totalMethods = (hasPassword ? 1 : 0) + oauthCount;
-
+  const totalMethods = (user.password ? 1 : 0) + (user.identities?.length || 0);
   if (totalMethods <= 1) {
-    const error = new Error(
-      "Cannot remove your only authentication method. Please add another login method before removing this one."
+    throw authError(
+      400,
+      "Cannot remove your only sign-in method. Add another one before removing this one."
     );
-    error.status = 400;
-    throw error;
   }
 
   if (providerToUnlink === "password") {
@@ -220,91 +131,52 @@ export async function unlinkIdentity(userId, providerToUnlink) {
   } else {
     user.identities = user.identities.filter((id) => id.provider !== providerToUnlink);
     if (user.provider === providerToUnlink) {
-      user.provider = user.identities[0]?.provider || (hasPassword ? "local" : null);
+      user.provider = user.identities[0]?.provider || (user.password ? "local" : null);
       user.providerId = user.identities[0]?.providerId || null;
     }
   }
 
   await user.save();
-  return { message: `${providerToUnlink} unlinked successfully.` };
+  return { message: `${providerLabel(providerToUnlink)} unlinked.` };
 }
 
-// ── Password Recovery & Session Revocation ───────────────────
+// ── Password recovery ────────────────────────────────────────
 
 /**
- * Request a password reset token for an email address.
- * Generates an unguessable 32-byte token and stores sha256(token) in MongoDB.
+ * Create a single-use reset token. Only sha256(token) is stored; the raw token
+ * is returned so the caller can deliver it by email.
  */
 export async function requestPasswordReset(email) {
-  const normalizedEmail = email.toLowerCase().trim();
-  const user = await User.findOne({ email: normalizedEmail });
+  const user = await User.findOne({ email: normalizeEmail(email) });
+  if (!user) return { resetToken: null };
 
-  // Anti-enumeration: return success message even if account not found
-  if (!user) {
-    return {
-      message: "If an account exists with this email, instructions have been sent.",
-      resetToken: null,
-    };
-  }
-
-  // Generate 32-byte secure random token
   const rawToken = crypto.randomBytes(32).toString("hex");
-
-  // Hash token with SHA-256 before saving to database
-  const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
-
-  user.passwordResetToken = hashedToken;
-  user.passwordResetExpires = new Date(Date.now() + 3600000); // Valid for 1 hour
+  user.passwordResetToken = sha256(rawToken);
+  user.passwordResetExpires = new Date(Date.now() + RESET_TOKEN_TTL_MS);
   await user.save();
 
-  return {
-    message: "If an account exists with this email, instructions have been sent.",
-    resetToken: rawToken, // Returned so email service (or dev console) can deliver it
-  };
+  return { resetToken: rawToken };
 }
 
 /**
- * Reset password using a valid, non-expired reset token.
- * Upon reset, tokenVersion is incremented, immediately revoking all active sessions.
+ * Set a new password from a valid reset token, then sign out every device.
+ * Clicking the emailed link proves ownership of the address, so it is marked verified.
  */
 export async function resetPasswordWithToken(rawToken, newPassword) {
-  // Hash the incoming token with SHA-256 to compare with stored hash
-  const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
-
-  const user = await User.findOne({
-    passwordResetToken: hashedToken,
-    passwordResetExpires: { $gt: new Date() },
-  });
+  const user = await User.findOneAndUpdate(
+    { passwordResetToken: sha256(rawToken), passwordResetExpires: { $gt: new Date() } },
+    { passwordResetToken: null, passwordResetExpires: null },
+    { returnDocument: "after" }
+  );
 
   if (!user) {
-    const error = new Error("Password reset token is invalid or has expired.");
-    error.status = 400;
-    throw error;
+    throw authError(400, "This reset link is invalid or has expired. Request a new one.");
   }
 
-  // Update password
-  user.password = await bcrypt.hash(newPassword, SALT_ROUNDS);
-
-  // Clear reset token fields
-  user.passwordResetToken = null;
-  user.passwordResetExpires = null;
-
-  // Revoke all active sessions on other devices
-  user.tokenVersion = (user.tokenVersion || 0) + 1;
-
+  user.password = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+  user.emailVerified = true;
   await user.save();
+  await revokeAllUserSessions(user._id);
 
-  return { message: "Password has been reset successfully. Please log in with your new password." };
-}
-
-/**
- * Revoke all active sessions for a user (used by logout endpoint)
- */
-export async function revokeAllSessions(userId) {
-  const user = await User.findById(userId);
-  if (user) {
-    user.tokenVersion = (user.tokenVersion || 0) + 1;
-    await user.save();
-  }
-  return { message: "Logged out successfully." };
+  return { message: "Password updated. Please log in with your new password." };
 }
