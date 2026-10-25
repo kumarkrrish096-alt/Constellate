@@ -28,6 +28,7 @@
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.11.3",
+    "yauzl": "^3.4.0",
     "simple-git": "^4.0.2",
     "tree-sitter-javascript": "^0.25.0",
     "tree-sitter-python": "^0.25.0",
