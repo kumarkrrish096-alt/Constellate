@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import AuthLayout from '../auth/AuthLayout';
 import { Field, PasswordField } from '../auth/field';
 import SocialButtons, { Divider } from '../auth/SocialButtons';
 import { validateLogin } from '../auth/validate';
+import { useAuth } from '../auth/AuthContext';
 import {
     signInWithEmail,
     signInWithProvider,
@@ -26,7 +27,17 @@ export default function Login() {
     const [msg, setMsg] = useState('');
     const [msgType, setMsgType] = useState('error'); // 'error' or 'success'
     const navigate = useNavigate();
+    const location = useLocation();
     const [searchParams] = useSearchParams();
+    const { isAuthenticated, loading } = useAuth();
+    const from = location.state?.from?.pathname || '/dashboard';
+
+    // Redirect to dashboard (or intended destination) if already authenticated
+    useEffect(() => {
+        if (!loading && isAuthenticated) {
+            navigate(from, { replace: true });
+        }
+    }, [isAuthenticated, loading, navigate, from]);
 
     // Preserve the typed email across reloads. The password is never written to storage.
     useEffect(() => {
@@ -71,7 +82,7 @@ export default function Login() {
         try {
             await fn();
             try { sessionStorage.removeItem('constellate_login_draft'); } catch (e) {}
-            navigate('/');
+            navigate(from, { replace: true });
         }
         catch (e) {
             setMsgType('error');

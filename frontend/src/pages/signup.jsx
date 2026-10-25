@@ -4,7 +4,8 @@ import AuthLayout from '../auth/AuthLayout';
 import { Field, PasswordField } from '../auth/field';
 import SocialButtons, { Divider } from '../auth/SocialButtons';
 import { validateSignUp, checks, strength } from '../auth/validate';
-import { signUpWithEmail, signInWithProvider, oauthErrorMessage, AuthError } from '../auth/AuthService';
+import { useAuth } from '../auth/AuthContext';
+import { signUpWithEmail, signInWithProvider, AuthError } from '../auth/AuthService';
 
 export default function SignUp() {
     const [v, setV] = useState(() => {
@@ -20,9 +21,17 @@ export default function SignUp() {
     const [msg, setMsg] = useState('');
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
+    const { isAuthenticated, loading } = useAuth();
     const s = strength(v.password);
 
-    // Preserve name and email across reloads. Passwords are never written to storage.
+    // Redirect to dashboard if already authenticated
+    useEffect(() => {
+        if (!loading && isAuthenticated) {
+            navigate('/dashboard', { replace: true });
+        }
+    }, [isAuthenticated, loading, navigate]);
+
+    // Preserve written credentials across page reloads
     useEffect(() => {
         try {
             sessionStorage.setItem('constellate_signup_draft', JSON.stringify({ name: v.name, email: v.email }));
@@ -62,7 +71,7 @@ export default function SignUp() {
         try {
             await fn();
             try { sessionStorage.removeItem('constellate_signup_draft'); } catch (e) {}
-            navigate('/');
+            navigate('/dashboard', { replace: true });
         }
         catch (e) {
             setMsg(e instanceof AuthError

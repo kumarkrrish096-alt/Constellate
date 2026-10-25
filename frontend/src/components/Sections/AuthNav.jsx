@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import Logo from "../shared/Logo"
+import { useAuth } from "../../auth/AuthContext"
 
 /** Fixed Login / Sign up bar. Gains a blurred background + brand mark after scrolling, like the original header. */
 export default function AuthNav() {
   const [scrolled, setScrolled] = useState(false)
+  const { isAuthenticated, logout } = useAuth()
+
   useEffect(() => {
     const on = () => setScrolled(window.scrollY > 20)
     on()
@@ -18,8 +21,17 @@ export default function AuthNav() {
         <Logo /> Constellate
       </Link>
       <nav className="cx-auth" aria-label="Account">
-        <Link className="cx-btn ghost" to="/login">Login</Link>
-        <Link className="cx-btn solid" to="/signup">Sign up</Link>
+        {isAuthenticated ? (
+          <>
+            <Link className="cx-btn solid" to="/dashboard">Dashboard</Link>
+            <button type="button" className="cx-btn ghost" onClick={logout}>Log out</button>
+          </>
+        ) : (
+          <>
+            <Link className="cx-btn ghost" to="/login">Login</Link>
+            <Link className="cx-btn solid" to="/signup">Sign up</Link>
+          </>
+        )}
       </nav>
     </header>
   )
