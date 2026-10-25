@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getUser, isLoggedIn, logout } from '../../auth/AuthService';
+import { getUser, isLoggedIn, logout, restoreSession } from '../../auth/AuthService';
 import { initAtlas } from './atlas';
 import './LandingPage.css';
 
@@ -13,9 +13,16 @@ import './LandingPage.css';
 export default function LandingPage() {
   const [user, setUser] = useState(() => (isLoggedIn() ? getUser() : null));
 
-  const handleLogout = () => {
-    logout();
+  // The cached user is only a hint for first paint; confirm with the server.
+  useEffect(() => {
+    let cancelled = false;
+    restoreSession().then((u) => { if (!cancelled) setUser(u); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleLogout = async () => {
     setUser(null);
+    await logout();
   };
 
   /* ── Refs for DOM elements the atlas needs ──────────── */

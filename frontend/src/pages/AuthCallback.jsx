@@ -1,9 +1,10 @@
 import { useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { saveSession } from "../auth/AuthService";
+import { useNavigate } from "react-router-dom";
+import { completeOAuthSignIn } from "../auth/AuthService";
 
+// The backend has already set the httpOnly session cookie before redirecting
+// here; this page exchanges it for an access token. Nothing secret is in the URL.
 export default function AuthCallback() {
-  const [params] = useSearchParams();
   const navigate = useNavigate();
 
   useEffect(() => {

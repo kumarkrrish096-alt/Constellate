@@ -1,273 +1,257 @@
+import crypto from "crypto";
 import User from "../models/user.js";
-import { generatetoken } from "./auth.js";
+import { BACKEND_URL } from "../config/auth.js";
+import { authError, providerLabel } from "./auth.js";
+import { revokeAllUserSessions } from "./session.js";
 
-// ── Google OAuth ────────────────────────────────────────────
+// ── Providers ───────────────────────────────────────────────
 
-/**
- * Handles the Google OAuth authorization code exchange, profile retrieval,
- * and safe identity resolution.
- */
-export async function handleGoogleCallback(code, mode = "login") {
-  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      client_id: process.env.GOOGLE_CLIENT_ID,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET,
-      code,
-      grant_type: "authorization_code",
-      redirect_uri: `${process.env.BACKEND_URL || "http://localhost:5000"}/api/auth/google/callback`,
-    }),
-  });
+const PROVIDERS = {
+  google: {
+    authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenUrl: "https://oauth2.googleapis.com/token",
+    scope: "openid email profile",
+    clientId: () => process.env.GOOGLE_CLIENT_ID,
+    clientSecret: () => process.env.GOOGLE_CLIENT_SECRET,
+    extraParams: { prompt: "select_account" },
+  },
+  github: {
+    authorizeUrl: "https://github.com/login/oauth/authorize",
+    tokenUrl: "https://github.com/login/oauth/access_token",
+    // user:email is the only scope needed: /user is readable without one,
+    // and /user/emails needs it to see verified (including private) addresses.
+    scope: "user:email",
+    clientId: () => process.env.GITHUB_CLIENT_ID,
+    clientSecret: () => process.env.GITHUB_CLIENT_SECRET,
+    // GitHub skips its consent screen once a user has approved the app; the
+    // account picker at least makes them confirm which account to use.
+    extraParams: { allow_signup: "true", prompt: "select_account" },
+  },
+};
 
-  const tokenData = await tokenRes.json();
+export const isSupportedProvider = (provider) => Object.hasOwn(PROVIDERS, provider);
 
-  if (tokenData.error) {
-    throw new Error(`Google authorization failed: ${tokenData.error_description || tokenData.error}`);
-  }
-
-  const profileRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
-    headers: { Authorization: `Bearer ${tokenData.access_token}` },
-  });
-
-  if (!profileRes.ok) {
-    throw new Error("Failed to retrieve user profile from Google.");
-  }
-
-  const profile = await profileRes.json();
-
-  if (!profile.email) {
-    throw new Error("Could not retrieve an email address from your Google account.");
-  }
-
-  if (profile.verified_email === false) {
-    throw new Error("Your Google email is not verified. Please verify it with Google before signing in.");
-  }
-
-  const googleId = String(profile.id);
-  const normalizedEmail = profile.email.toLowerCase().trim();
-
-  return resolveOAuthIdentity({
-    provider: "google",
-    providerId: googleId,
-    email: normalizedEmail,
-    name: profile.name || profile.email.split("@")[0],
-    emailVerified: true,
-    mode,
-  });
+export function isProviderConfigured(provider) {
+  const p = PROVIDERS[provider];
+  return Boolean(p.clientId() && p.clientSecret());
 }
 
-// ── GitHub OAuth ────────────────────────────────────────────
+const redirectUri = (provider) => `${BACKEND_URL}/api/auth/${provider}/callback`;
 
 /**
- * Handles GitHub OAuth authorization code exchange, private/noreply email resolution,
- * and safe identity resolution.
+ * Fresh per-attempt secrets: `state` defeats login CSRF, the PKCE verifier
+ * makes a stolen authorization code useless to anyone but this browser.
  */
-export async function handleGithubCallback(code, mode = "login") {
-  // 1. Exchange temporary code for an access token
-  const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+export function createOAuthAttempt() {
+  const state = crypto.randomBytes(32).toString("base64url");
+  const codeVerifier = crypto.randomBytes(32).toString("base64url");
+  const codeChallenge = crypto.createHash("sha256").update(codeVerifier).digest("base64url");
+  return { state, codeVerifier, codeChallenge };
+}
+
+export function buildAuthorizeUrl(provider, { state, codeChallenge }) {
+  const p = PROVIDERS[provider];
+  const params = new URLSearchParams({
+    client_id: p.clientId(),
+    redirect_uri: redirectUri(provider),
+    response_type: "code",
+    scope: p.scope,
+    state,
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+    ...p.extraParams,
+  });
+  return `${p.authorizeUrl}?${params}`;
+}
+
+async function exchangeCode(provider, code, codeVerifier) {
+  const p = PROVIDERS[provider];
+  const res = await fetch(p.tokenUrl, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
     },
-    body: JSON.stringify({
-      client_id: process.env.GITHUB_CLIENT_ID,
-      client_secret: process.env.GITHUB_CLIENT_SECRET,
+    body: new URLSearchParams({
+      client_id: p.clientId(),
+      client_secret: p.clientSecret(),
       code,
+      code_verifier: codeVerifier,
+      grant_type: "authorization_code",
+      redirect_uri: redirectUri(provider),
     }),
+    signal: AbortSignal.timeout(10_000),
   });
 
-  const tokenData = await tokenRes.json();
-
-  if (tokenData.error) {
-    throw new Error(`GitHub authorization failed: ${tokenData.error_description || tokenData.error}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.error || !data.access_token) {
+    console.error(`${provider} token exchange failed:`, data.error || res.status, data.error_description || "");
+    throw authError(502, `${providerLabel(provider)} sign-in failed. Please try again.`, "oauth_failed");
   }
-
-  // 2. Fetch user profile
-  const userRes = await fetch("https://api.github.com/user", {
-    headers: {
-      Authorization: `Bearer ${tokenData.access_token}`,
-      "User-Agent": "Constellate-Auth",
-    },
-  });
-
-  if (!userRes.ok) {
-    throw new Error("Failed to retrieve user profile from GitHub.");
-  }
-
-  const profile = await userRes.json();
-  const githubId = String(profile.id);
-
-  // 3. Resolve user email (handling private, public, and unverified emails)
-  let resolvedEmail = null;
-  let isVerified = false;
-
-  // Case A: Public email is on the profile
-  if (profile.email) {
-    resolvedEmail = profile.email;
-    isVerified = true;
-  }
-
-  // Case B: Public email is hidden/private — query /user/emails
-  if (!resolvedEmail) {
-    const emailsRes = await fetch("https://api.github.com/user/emails", {
-      headers: {
-        Authorization: `Bearer ${tokenData.access_token}`,
-        "User-Agent": "Constellate-Auth",
-      },
-    });
-
-    if (emailsRes.ok) {
-      const emails = await emailsRes.json();
-
-      // Priority 1: Primary and verified
-      const primaryVerified = emails.find((e) => e.primary && e.verified);
-      // Priority 2: Any verified email
-      const anyVerified = emails.find((e) => e.verified);
-
-      if (primaryVerified) {
-        resolvedEmail = primaryVerified.email;
-        isVerified = true;
-      } else if (anyVerified) {
-        resolvedEmail = anyVerified.email;
-        isVerified = true;
-      } else if (emails.length > 0 && !emails.some((e) => e.verified)) {
-        throw new Error(
-          "Your GitHub account does not have a verified email address. Please verify your email on GitHub before continuing."
-        );
-      }
-    }
-  }
-
-  if (!resolvedEmail) {
-    throw new Error("Could not retrieve a valid email address from your GitHub account.");
-  }
-
-  const normalizedEmail = resolvedEmail.toLowerCase().trim();
-  const displayName = profile.name?.trim() || profile.login;
-
-  // 4. Resolve identity through unified anti-auto-merge policy
-  return resolveOAuthIdentity({
-    provider: "github",
-    providerId: githubId,
-    email: normalizedEmail,
-    name: displayName,
-    emailVerified: isVerified,
-    mode,
-  });
+  return data;
 }
 
-// ── Shared Identity Resolution Policy ────────────────────────
+// ── Google (OpenID Connect) ─────────────────────────────────
 
-/**
- * Enforces strict account identity and linking policies:
- * - Existing linked identity -> Login
- * - Matching email on different provider -> Reject auto-merge & instruct user
- * - New user on login -> Reject (must signup first)
- * - New user on signup -> Create unified user with identities array
- */
-export async function resolveOAuthIdentity({ provider, providerId, email, name, emailVerified, mode }) {
-  // Step A: Look up user by immutable OAuth provider identity
-  let user = await User.findByIdentity(provider, providerId);
+function decodeJwtPayload(jwt) {
+  const [, payload] = String(jwt).split(".");
+  return JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+}
 
-  if (user) {
-    // User already has this Google/GitHub identity linked — proceed to login
-    const token = generatetoken(user);
-    return {
-      token,
-      user: { id: user._id, name: user.name, email: user.email },
-    };
+async function fetchGoogleProfile(code, codeVerifier) {
+  const tokens = await exchangeCode("google", code, codeVerifier);
+
+  // The ID token came straight from Google's token endpoint over TLS, so its
+  // signature need not be re-verified (per Google's OIDC docs). Claims still are.
+  let claims;
+  try {
+    claims = decodeJwtPayload(tokens.id_token);
+  } catch {
+    throw authError(502, "Google sign-in failed. Please try again.", "oauth_failed");
   }
 
-  // Step B: Check if an account already exists with this email address
-  const existingByEmail = await User.findOne({ email });
-
-  if (existingByEmail) {
-    // If the provider has verified this email address, safely auto-link this identity!
-    if (emailVerified) {
-      if (!Array.isArray(existingByEmail.identities)) {
-        existingByEmail.identities = [];
-      }
-
-      const existingIdentityIndex = existingByEmail.identities.findIndex(
-        (id) => id.provider === provider
-      );
-
-      if (existingIdentityIndex >= 0) {
-        existingByEmail.identities[existingIdentityIndex].providerId = String(providerId);
-        existingByEmail.identities[existingIdentityIndex].email = email;
-      } else {
-        existingByEmail.identities.push({
-          provider,
-          providerId: String(providerId),
-          email,
-          linkedAt: new Date(),
-        });
-      }
-
-      if (!existingByEmail.emailVerified) {
-        existingByEmail.emailVerified = true;
-      }
-
-      await existingByEmail.save();
-
-      const token = generatetoken(existingByEmail);
-      return {
-        token,
-        user: { id: existingByEmail._id, name: existingByEmail.name, email: existingByEmail.email },
-      };
-    }
-
-    // If the provider did not verify the email, reject auto-merging to prevent email spoofing
-    const existingMethods = [];
-    if (existingByEmail.password) existingMethods.push("password");
-    if (existingByEmail.identities?.length) {
-      existingByEmail.identities.forEach((id) => existingMethods.push(id.provider));
-    } else if (existingByEmail.provider && existingByEmail.provider !== "local") {
-      existingMethods.push(existingByEmail.provider);
-    }
-
-    const methodNames = existingMethods.join(" or ") || "another method";
-
-    const error = new Error(
-      `An account with this email already exists using ${methodNames}. ` +
-      `Your ${provider} email is unverified, so it cannot be automatically linked. Please log in with ${methodNames} first.`
-    );
-    error.status = 409;
-    throw error;
+  const validIssuer = ["https://accounts.google.com", "accounts.google.com"].includes(claims.iss);
+  const validAudience = claims.aud === process.env.GOOGLE_CLIENT_ID;
+  const notExpired = typeof claims.exp === "number" && claims.exp * 1000 > Date.now();
+  if (!validIssuer || !validAudience || !notExpired || !claims.sub) {
+    throw authError(502, "Google sign-in failed. Please try again.", "oauth_failed");
   }
-
-  // Step C: No account exists with this identity or email
-  if (mode === "login") {
-    const error = new Error("No account found with this email. Please sign up first.");
-    error.status = 404;
-    throw error;
-  }
-
-  // Step D: Create new account in signup mode
-  user = await User.create({
-    name,
-    email,
-    emailVerified: Boolean(emailVerified),
-    password: null, // OAuth-only user has no password initially
-    identities: [
-      {
-        provider,
-        providerId,
-        email,
-        linkedAt: new Date(),
-      },
-    ],
-    tokenVersion: 0,
-    provider, // Retained for backward-compatibility
-    providerId,
-  });
-
-  const token = generatetoken(user);
 
   return {
-    token,
-    user: { id: user._id, name: user.name, email: user.email },
+    providerId: String(claims.sub),
+    email: claims.email,
+    emailVerified: claims.email_verified === true,
+    name: claims.name,
   };
+}
+
+// ── GitHub ──────────────────────────────────────────────────
+
+async function githubGet(path, accessToken) {
+  const res = await fetch(`https://api.github.com${path}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "Constellate-Auth",
+    },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) {
+    throw authError(502, "Could not read your GitHub profile. Please try again.", "oauth_failed");
+  }
+  return res.json();
+}
+
+async function fetchGithubProfile(code, codeVerifier) {
+  const { access_token: accessToken } = await exchangeCode("github", code, codeVerifier);
+
+  const [profile, emails] = await Promise.all([
+    githubGet("/user", accessToken),
+    githubGet("/user/emails", accessToken),
+  ]);
+
+  // Only ever trust an address GitHub reports as verified; prefer the primary one.
+  const verified = emails.filter((e) => e.verified && !e.email.endsWith("@users.noreply.github.com"));
+  const chosen = verified.find((e) => e.primary) || verified[0];
+
+  return {
+    providerId: String(profile.id),
+    email: chosen?.email || null,
+    emailVerified: Boolean(chosen),
+    name: profile.name?.trim() || profile.login,
+  };
+}
+
+export async function fetchProviderProfile(provider, code, codeVerifier) {
+  return provider === "google"
+    ? fetchGoogleProfile(code, codeVerifier)
+    : fetchGithubProfile(code, codeVerifier);
+}
+
+// ── Account resolution ──────────────────────────────────────
+
+/**
+ * Turn a provider profile into a Constellate user:
+ *  0. Signup with an account that already exists (by identity or email)
+ *                                               → refuse, the user must log in instead.
+ *  1. Provider identity already linked          → that user.
+ *  2. Provider email unverified / missing       → refuse (cannot prove ownership).
+ *  3. Account with the same email exists        → link this identity to it.
+ *     If that account's email was never verified, whoever set its password never
+ *     proved they own the inbox (the "pre-account-hijacking" attack), so the
+ *     password and its sessions are removed; the verified owner keeps the account.
+ *  4. No account at all                          → login: refuse, the user must sign up first.
+ *                                                 signup: create a new account.
+ */
+export async function resolveOAuthUser(provider, profile, mode = "login") {
+  const label = providerLabel(provider);
+
+  const accountExists = () =>
+    authError(409, "An account already exists for this email. Please log in instead.", "account_exists");
+
+  const linked = await User.findByIdentity(provider, profile.providerId);
+  if (linked) {
+    if (mode === "signup") throw accountExists();
+    return linked;
+  }
+
+  if (!profile.email || !profile.emailVerified) {
+    throw authError(
+      403,
+      `Your ${label} account has no verified email address. Verify one with ${label} and try again.`,
+      "email_unverified"
+    );
+  }
+
+  const email = profile.email.toLowerCase().trim();
+  const name = profile.name?.trim() || email.split("@")[0];
+  const existing = await User.findOne({ email });
+
+  if (existing) {
+    if (mode === "signup") throw accountExists();
+
+    if (existing.identities?.some((id) => id.provider === provider)) {
+      throw authError(
+        409,
+        `This email is already linked to a different ${label} account.`,
+        "provider_conflict"
+      );
+    }
+
+    existing.identities.push({ provider, providerId: profile.providerId, email, linkedAt: new Date() });
+
+    if (!existing.emailVerified) {
+      if (existing.password) {
+        existing.password = null;
+        await revokeAllUserSessions(existing._id);
+        console.warn(`Cleared unverified password on ${existing._id} after verified ${provider} sign-in`);
+      }
+      existing.emailVerified = true;
+    }
+
+    await existing.save();
+    return existing;
+  }
+
+  if (mode !== "signup") {
+    throw authError(404, `No account is linked to this ${label} account. Please sign up first.`, "no_account");
+  }
+
+  try {
+    return await User.create({
+      name,
+      email,
+      emailVerified: true,
+      password: null,
+      identities: [{ provider, providerId: profile.providerId, email, linkedAt: new Date() }],
+      provider,
+      providerId: profile.providerId,
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      throw authError(409, "That account was just created. Please try again.", "oauth_failed");
+    }
+    throw error;
+  }
 }
