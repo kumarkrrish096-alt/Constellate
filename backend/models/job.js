@@ -97,6 +97,9 @@ jobschema.index({status:1,createdat:1});
 // and queue position counts the queued jobs ahead of it in that order
 jobschema.index({status:1,nextrunat:1});
 
+// crash recovery: running jobs whose lease ran out
+jobschema.index({status:1,lockeduntil:1});
+
 const Job=mongoose.model("Job",jobschema,"jobs");
 
 export default Job;

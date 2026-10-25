@@ -15,7 +15,19 @@ const snapshotschema=new mongoose.Schema(
         filepath:
         {
             type:String,
-            required:true 
+            required:true
+        },
+        // ANALYSIS_VERSION that produced it; older versions are not cache hits
+        version:
+        {
+            type:Number,
+            default:0
+        },
+        // compressed size on disk
+        sizebytes:
+        {
+            type:Number,
+            default:0
         },
         createdat:
         {
