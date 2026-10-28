@@ -13,6 +13,9 @@ export default function AIExplanationPanel({ repository, file, onJumpToLine }) {
   const [explanation, setExplanation] = useState(null)
   const [selectedFunction, setSelectedFunction] = useState(null)
   const [question, setQuestion] = useState('')
+  const [activeQuestion, setActiveQuestion] = useState(null)
+  const [isAsking, setIsAsking] = useState(false)
+  const [questionError, setQuestionError] = useState('')
   const [status, setStatus] = useState('idle')
   const [error, setError] = useState('')
   const [meta, setMeta] = useState(null)
@@ -26,8 +29,20 @@ export default function AIExplanationPanel({ repository, file, onJumpToLine }) {
     activeRequest.current?.abort()
     const controller = new AbortController()
     activeRequest.current = controller
+
+    if (task === 'question') {
+      setIsAsking(true)
+      setQuestionError('')
+    } else {
+      setActiveQuestion(null)
+      setQuestionError('')
+      setError('')
+      setExplanation(null)
+    }
+
     setStatus('loading')
     setError('')
+
     try {
       const response = await authFetch(`/api/explanations/${task}`, {
         method: 'POST',
@@ -49,11 +64,27 @@ export default function AIExplanationPanel({ repository, file, onJumpToLine }) {
       if (id !== requestId.current) return
       setExplanation(body.explanation)
       setMeta({ model: body.model, generatedAt: body.generatedAt, cacheHit: body.cacheHit })
+      if (task === 'question') {
+        setActiveQuestion(prompt)
+        setIsAsking(false)
+      }
       setStatus('ready')
     } catch (requestError) {
       if (requestError.name === 'AbortError' || id !== requestId.current) return
-      setError(requestError.message || 'Could not load an explanation.')
-      setStatus('error')
+      const message = requestError.message || 'Could not load an explanation.'
+      if (task === 'question') {
+        setQuestionError(message)
+        setIsAsking(false)
+        if (explanation) {
+          setStatus('ready')
+        } else {
+          setError(message)
+          setStatus('error')
+        }
+      } else {
+        setError(message)
+        setStatus('error')
+      }
     }
   }
 
@@ -66,7 +97,14 @@ export default function AIExplanationPanel({ repository, file, onJumpToLine }) {
   function submitQuestion(event) {
     event.preventDefault()
     const prompt = question.trim()
-    if (!prompt || prompt.length > 1000) return
+    if (!prompt || prompt.length > 1000 || isAsking) return
+    setQuestion('')
+    requestExplanation('question', selectedFunction, prompt)
+  }
+
+  function submitSuggested(prompt) {
+    if (!prompt || isAsking) return
+    setQuestion('')
     requestExplanation('question', selectedFunction, prompt)
   }
 
@@ -80,15 +118,44 @@ export default function AIExplanationPanel({ repository, file, onJumpToLine }) {
       <div className="ai-explanation-head">
         <div>
           <h3 id="ai-explanation-title">AI explanation</h3>
-          <p className="mono">{selectedFunction ? `${selectedFunction.name} · line ${selectedFunction.lineStart}` : file.path}</p>
+          <p className="mono">
+            {selectedFunction ? `${selectedFunction.name} · line ${selectedFunction.lineStart}` : file.path}
+            {activeQuestion ? ' · Q&A' : ''}
+          </p>
         </div>
         {status === 'idle' && <button type="button" className="pb" onClick={() => requestExplanation('file')}>Explain file</button>}
-        {(status === 'error' || status === 'ready') && <button type="button" onClick={() => requestExplanation(selectedFunction ? 'function' : 'file')}>Retry</button>}
+        {(status === 'error' || status === 'ready') && (
+          <button type="button" onClick={() => requestExplanation(activeQuestion ? 'question' : (selectedFunction ? 'function' : 'file'), selectedFunction, activeQuestion)}>
+            Retry
+          </button>
+        )}
       </div>
 
       {status === 'loading' && <p className="sub" role="status">Building a source-grounded explanation…</p>}
-      {status === 'error' && <div className="ai-error" role="alert"><p>{error}</p><button type="button" onClick={() => requestExplanation(selectedFunction ? 'function' : 'file')}>Retry</button></div>}
-      {status === 'ready' && explanation && <>
+      {status === 'error' && (
+        <div className="ai-error" role="alert">
+          <p>{error}</p>
+          <button type="button" onClick={() => requestExplanation(selectedFunction ? 'function' : 'file')}>Retry</button>
+        </div>
+      )}
+
+      {activeQuestion && status === 'ready' && (
+        <div className="ai-question-banner">
+          <div className="ai-question-banner-body">
+            <span className="tag">Question</span>
+            <span className="ai-question-banner-text">“{activeQuestion}”</span>
+          </div>
+          <button
+            type="button"
+            className="ai-back-btn"
+            onClick={() => { setActiveQuestion(null); requestExplanation(selectedFunction ? 'function' : 'file'); }}
+          >
+            Reset to full {selectedFunction ? 'function' : 'file'} view
+          </button>
+        </div>
+      )}
+
+      {explanation && (status === 'ready' || isAsking) && <>
         <p className="ai-summary">{explanation.summary}</p>
         {meta?.cacheHit && <p className="mono">Cached explanation · {meta.model}</p>}
         <details className="fq" open>
@@ -124,11 +191,37 @@ export default function AIExplanationPanel({ repository, file, onJumpToLine }) {
 
       <form className="ai-question" onSubmit={submitQuestion}>
         <label className="mono" htmlFor="ai-question-input">Ask about this {selectedFunction ? 'function' : 'file'}</label>
+        {questionError && (
+          <div className="ai-question-error" role="alert">
+            <span>{questionError}</span>
+            <button type="button" onClick={() => submitSuggested(activeQuestion || question)}>Retry</button>
+          </div>
+        )}
         <div className="ai-question-row">
-          <input id="ai-question-input" value={question} maxLength={1000} onChange={event => setQuestion(event.target.value)} placeholder="Ask a code-specific follow-up" />
-          <button type="submit" disabled={!question.trim() || status === 'loading'} aria-label="Send question">Ask</button>
+          <input
+            id="ai-question-input"
+            value={question}
+            disabled={isAsking}
+            maxLength={1000}
+            onChange={event => setQuestion(event.target.value)}
+            placeholder="Ask a code-specific follow-up"
+          />
+          <button
+            type="submit"
+            disabled={!question.trim() || status === 'loading' || isAsking}
+            aria-label="Send question"
+          >
+            {isAsking ? 'Asking…' : 'Ask'}
+          </button>
+        </div>
+        <div className="ai-question-chips">
+          <span className="mono">Quick ask:</span>
+          <button type="button" disabled={isAsking || status === 'loading'} onClick={() => submitSuggested('What is the primary responsibility of this code?')}>Primary purpose</button>
+          <button type="button" disabled={isAsking || status === 'loading'} onClick={() => submitSuggested('Are there any security vulnerabilities or edge-case bugs?')}>Risks & bugs</button>
+          <button type="button" disabled={isAsking || status === 'loading'} onClick={() => submitSuggested('What are the main functions and dependencies?')}>Key functions</button>
         </div>
       </form>
     </section>
   )
 }
+

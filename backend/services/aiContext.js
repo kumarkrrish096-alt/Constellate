@@ -208,10 +208,11 @@ async function fetchpinnedsource(identity, fetchImpl) {
   try {
     response = await fetchImpl(url, {
       redirect: "error",
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(25_000),
       headers: { Accept: "text/plain" },
     });
-  } catch {
+  } catch (fetchErr) {
+    console.error("fetchpinnedsource error:", fetchErr.message, fetchErr.cause);
     throw new AIExplanationError("source_unavailable", "Could not retrieve source for this public commit.", 502);
   }
 
@@ -258,7 +259,7 @@ async function assertpinnedsourcepublic(identity, fetchImpl) {
     response = await fetchImpl(pinnedsourceurl(identity), {
       method: "HEAD",
       redirect: "error",
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(25_000),
       headers: { Accept: "text/plain" },
     });
   } catch {
