@@ -21,11 +21,15 @@ export class AuthError extends Error {
   }
 }
 
+export class AuthNotConnectedError extends AuthError {
+  constructor() {
+    super("Authentication is not connected yet.");
+    this.name = "AuthNotConnectedError";
+  }
+}
+
 // ── Session state ───────────────────────────────────────────
 
-// ── Token & Session helpers ─────────────────────────────────
-
-const TOKEN_KEY = "constellate_token";
 const USER_KEY = "constellate_user";
 
 let accessToken = null;
@@ -33,6 +37,10 @@ let refreshInFlight = null;
 
 // Older builds kept the JWT itself in localStorage; remove it.
 try { localStorage.removeItem("constellate_token"); } catch {}
+
+export function getToken() {
+  return accessToken;
+}
 
 export function getUser() {
   try {
@@ -48,12 +56,10 @@ export function isLoggedIn() {
   return !!getUser();
 }
 
-export function saveSession(data) {
-  if (data?.token) {
-    localStorage.setItem(TOKEN_KEY, data.token);
-  }
+function setSession(data) {
+  accessToken = data?.accessToken || data?.token || null;
   if (data?.user) {
-    localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+    try { localStorage.setItem(USER_KEY, JSON.stringify(data.user)); } catch {}
   }
   if (typeof window !== "undefined") {
     window.dispatchEvent(
@@ -62,62 +68,18 @@ export function saveSession(data) {
   }
 }
 
+export function saveSession(data) {
+  setSession(data);
+}
+
 export function clearSession() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
+  accessToken = null;
+  try { localStorage.removeItem(USER_KEY); } catch {}
   if (typeof window !== "undefined") {
     window.dispatchEvent(
       new CustomEvent("constellate_auth", { detail: null })
     );
   }
-}
-
-/**
- * Validate and restore session on page reload or app start.
- * Resolves to the user object if authenticated, or null.
- */
-export async function restoreSession() {
-  const token = getToken();
-  if (!token) {
-    clearSession();
-    return null;
-  }
-
-  try {
-    const profile = await getCurrentUserProfile();
-    if (profile) {
-      const current = getUser();
-      const updated = {
-        ...current,
-        ...(profile.user || profile),
-      };
-      saveSession({ token, user: updated });
-      return updated;
-    }
-    return null;
-  } catch {
-    // On network failure, fallback to cached user to avoid jarring logouts
-    return getUser();
-  }
-}
-
-/**
- * Helper to complete OAuth sign-in with query params or user data.
- */
-export async function completeOAuthSignIn(params) {
-  if (params) {
-    const token = typeof params.get === "function" ? params.get("token") : params.token;
-    if (token) {
-      const user = {
-        id: typeof params.get === "function" ? params.get("id") : params.id,
-        name: typeof params.get === "function" ? params.get("name") : params.name,
-        email: typeof params.get === "function" ? params.get("email") : params.email,
-      };
-      saveSession({ token, user });
-      return user;
-    }
-  }
-  return restoreSession();
 }
 
 async function readJson(res) {
@@ -128,7 +90,38 @@ async function readJson(res) {
   }
 }
 
-  const data = await res.json().catch(() => ({}));
+// ── Token refresh ───────────────────────────────────────────
+
+/**
+ * Exchange the refresh cookie for a new access token. Concurrent callers share
+ * one request, so a burst of 401s triggers a single refresh.
+ * Resolves to the user, or null when there is no valid session.
+ */
+export function refreshSession() {
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      try {
+        const res = await fetch(`${API}/api/auth/refresh`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (!res.ok) {
+          clearSession();
+          return null;
+        }
+        const data = await readJson(res);
+        setSession(data);
+        return data.user;
+      } catch {
+        // Network failure: keep the cached user, the next call will retry.
+        return null;
+      } finally {
+        refreshInFlight = null;
+      }
+    })();
+  }
+  return refreshInFlight;
+}
 
 /** Call on app start: resolves to the signed-in user or null. */
 export const restoreSession = refreshSession;
@@ -167,7 +160,7 @@ async function postAuth(path, body, fallbackMessage) {
     body: JSON.stringify(body),
   });
 
-  const data = await res.json().catch(() => ({}));
+  const data = await readJson(res);
 
   if (!res.ok) {
     throw new AuthError(data.error || fallbackMessage, data.errors);
@@ -189,33 +182,26 @@ export const signInWithEmail = async ({ email, password, remember = true }) => {
 
 // Sign out of current device session
 export async function logout() {
-  const token = getToken();
-  if (token) {
-    try {
-      await fetch(`${API}/api/auth/logout`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-    } catch (e) {
-      console.warn("Logout session revocation notification failed:", e);
-    }
+  try {
+    await fetch(`${API}/api/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+    });
+  } catch (e) {
+    console.warn("Logout session revocation notification failed:", e);
   }
   clearSession();
 }
 
-// ── Password Recovery & Profile Management ──────────────────
-
-export const requestPasswordReset = async (email) => {
-  const res = await fetch(`${API}/api/auth/forgot-password`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
-  });
-
-  const data = await res.json().catch(() => ({}));
+/** Sign out of every device. */
+export async function logoutEverywhere() {
+  await authFetch("/api/auth/logout-all", { method: "POST" });
+  clearSession();
+}
 
 // ── OAuth ───────────────────────────────────────────────────
 
@@ -224,8 +210,22 @@ export const signInWithProvider = (provider, mode = "login") => {
   window.location.href = `${API}/api/auth/${provider}?mode=${encodeURIComponent(mode)}`;
 };
 
-/** Called on /auth/callback: the backend has set the refresh cookie. */
-export const completeOAuthSignIn = () => refreshSession();
+/** Called on /auth/callback: supports query params or refresh cookie. */
+export async function completeOAuthSignIn(params) {
+  if (params) {
+    const token = typeof params.get === "function" ? params.get("token") : params.token;
+    if (token) {
+      const user = {
+        id: typeof params.get === "function" ? params.get("id") : params.id,
+        name: typeof params.get === "function" ? params.get("name") : params.name,
+        email: typeof params.get === "function" ? params.get("email") : params.email,
+      };
+      setSession({ accessToken: token, user });
+      return user;
+    }
+  }
+  return refreshSession();
+}
 
 const PROVIDER_NAMES = { google: "Google", github: "GitHub" };
 
@@ -243,10 +243,10 @@ export function oauthErrorMessage(code, provider) {
     account_exists: `You already have an account with this ${p} email. Please log in instead.`,
     session_failed: "We couldn't finish signing you in. Please try again.",
   };
-  return messages[code] || "Sign-in failed. Please try again.";
+  return messages[code] || code || "Sign-in failed. Please try again.";
 }
 
-  const data = await res.json().catch(() => ({}));
+// ── Password Recovery & Profile Management ──────────────────
 
 export const requestPasswordReset = (email) =>
   postAuth("forgot-password", { email }, "Password reset request failed");
@@ -255,54 +255,16 @@ export const resetPassword = (token, newPassword) =>
   postAuth("reset-password", { token, newPassword }, "Password reset failed");
 
 export const getCurrentUserProfile = async () => {
-  const token = getToken();
-  if (!token) return null;
-
   try {
-    const res = await fetch(`${API}/api/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
+    const res = await authFetch("/api/auth/me");
     if (!res.ok) {
       if (res.status === 401) {
         clearSession();
       }
       return null;
     }
-
     return await res.json().catch(() => null);
   } catch {
     return null;
   }
 };
-
-export async function authFetch(path, options = {}) {
-  const token = getToken();
-  return fetch(`${API}${path}`, {
-    ...options,
-    headers: {
-      ...options.headers,
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-}
-
-// ── Provider error mapping ──────────────────────────────────
-
-const PROVIDER_NAMES = { google: "Google", github: "GitHub" };
-
-export function oauthErrorMessage(code, provider) {
-  const p = PROVIDER_NAMES[provider] || "That provider";
-  const messages = {
-    oauth_cancelled: `${p} sign-in was cancelled.`,
-    oauth_state: "That sign-in attempt expired or was started in another browser. Please try again.",
-    oauth_failed: `${p} sign-in failed. Please try again.`,
-    oauth_not_configured: `${p} sign-in isn't set up on this server yet.`,
-    email_unverified: `Your ${p} account has no verified email address. Verify one with ${p}, then try again.`,
-    provider_conflict: `This email is already linked to a different ${p} account.`,
-    no_account: `No Constellate account found for this ${p} account. Please sign up first.`,
-    account_exists: `You already have an account with this ${p} email. Please log in instead.`,
-    session_failed: "We couldn't finish signing you in. Please try again.",
-  };
-  return messages[code] || code || "Sign-in failed. Please try again.";
-}
