@@ -99,7 +99,11 @@ export default function Chronicle() {
     open: openCast,
     recast: h => { setUrl('https://github.com/' + h.n); focusCast(); say('Ready to recast ' + h.n) },
     link: h => { try { navigator.clipboard.writeText(location.origin + '/r/' + h.s) } catch { /* ignore */ } say(`Permalink for ${h.s} copied`) },
-    json: h => { dl(JSON.stringify({ repository: h.n, sha: h.s, language: h.l, files: h.f, health: h.h, importCycles: h.cy, godFiles: h.g, castInMs: h.ms, castAt: new Date(h.at).toISOString() }, null, 2), h.n.replace('/', '-') + '-' + h.s + '.json', 'application/json'); say('JSON saved') },
+    json: h => {
+      const content = h.snapshot || { repository: h.n, sha: h.s, language: h.l, files: h.f, health: h.h, importCycles: h.cy, godFiles: h.g, castInMs: h.ms, castAt: new Date(h.at).toISOString() };
+      dl(JSON.stringify(content, null, 2), h.n.replace('/', '-') + '-' + (h.s || 'snapshot') + '.json', 'application/json');
+      say('JSON saved');
+    },
     erase: h => { setHist(x => x.filter(y => y.id !== h.id)); setPicks(p => p.filter(x => x !== h.id)); setStill(key); setNewId(null); say('Struck from the chronicle') },
   }
   const filt = (set, v) => { set(v); setFk(k => k + 1) }
