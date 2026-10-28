@@ -1,73 +1,87 @@
 import { useState, useRef } from 'react'
 import Icon from './Icon'
 import { useDash } from './DashContext'
+import { authFetch } from '../auth/AuthService'
 
-const STEPS = [['Invoke', 'Format checked'], ['Consult the archive', 'Resolving commit SHA'], ['Join the queue', 'Job created, stream open'], ['Gather the scrolls', 'Shallow clone, limits'], ['Read the runes', 'Tree-sitter ASTs'], ['Draw the constellation', 'Imports, cycles, clusters'], ['Study the chronicle', 'Churn, co-change'], ['Seal the snapshot', 'Written by SHA'], ['Reveal the atlas', 'Ready to explore']]
-const wait = ms => new Promise(r => setTimeout(r, ms))
+const STEPS = ['Submit repository', 'Resolve commit', 'Analyze source', 'Load snapshot']
 const GH = /^(?:https?:\/\/)?(?:www\.)?github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/i
 
 export default function CastCard() {
-  const { hist, setHist, url, setUrl, urlRef, setRepo, setStats, setStatus, setNewId, say, go } = useDash()
-  const [err, setErr] = useState(''), [run, setRun] = useState(null), [drag, setDrag] = useState(false)
-  const busy = useRef(false), seq = useRef(0)
+  const { url, setUrl, urlRef, setRepo, setRepository, setSnapshot, setStats, setStatus, setNewId, setSel, say, go } = useDash()
+  const [err, setErr] = useState(''), [run, setRun] = useState(null)
+  const busy = useRef(false)
 
-  async function cast(name) {
+  async function cast(repoUrl) {
     if (busy.current) return
     busy.current = true
-    const st = Array(9).fill(''); let log = [], pct = 0
-    const upd = (done = false) => setRun({ st: [...st], log: [...log], pct, done })
-    const prior = hist.find(h => h.n.toLowerCase() === name.toLowerCase() && h.st !== 'fizzled'), hit = !!prior, t0 = Date.now()
-    const sha = hit ? prior.s : Array.from({ length: 7 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('')
-    const files = hit ? prior.f : 200 + Math.floor(Math.random() * 900)
-    const msg = ['Invocation accepted for ' + name, hit ? 'Found in the archive at ' + sha : 'HEAD resolved to ' + sha + '. No snapshot yet', 'Queued. Position 1 of 1', 'Cloned at depth 1. 38 binaries skipped', 'Reading the runes…', 'Constellation drawn. Clusters via Louvain', 'Reading the last 12 months of history', 'Snapshot sealed atomically', 'The atlas is revealed']
-    const push = m => { log = [...log, { k: seq.current++, t: m }].slice(-8) }
-    upd()
-    for (let i = 0; i < 9; i++) {
-      if (hit && i >= 2 && i <= 7) { st[i] = 'skip'; upd(); continue }
-      st[i] = 'run'; push(msg[i]); upd()
-      setStatus({ t: 'Casting ' + name, s: `Step ${i + 1} of 9 · ${STEPS[i][0]}`, p: i / 9 })
-      if (i === 4) {
-        await new Promise(r => {
-          const p0 = performance.now()
-          const f = t => {
-            const p = Math.min(1, (t - p0) / 1500)
-            log = [...log.slice(0, -1), { ...log[log.length - 1], t: `${Math.round(files * p).toLocaleString()} of ${files.toLocaleString()} files read` }]
-            upd()
-            if (p < 1) requestAnimationFrame(f); else r()
-          }
-          requestAnimationFrame(f)
-        })
-      } else await wait(i === 0 ? 350 : hit ? 420 : 650)
-      st[i] = 'done'; pct = (i + 1) / 9 * 100; upd()
-      setStatus({ t: 'Casting ' + name, s: `Step ${i + 1} of 9 · ${STEPS[i][0]}`, p: (i + 1) / 9 })
+    setErr('')
+    setRun({ step: 0, pct: 0, log: 'Submitting repository…', done: false })
+    setStatus({ t: 'Analyzing repository', s: 'Submitting repository', p: 0 })
+    try {
+      const submitted = await authFetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repoUrl }),
+      })
+      const submission = await submitted.json()
+      if (!submitted.ok) throw new Error(submission.error || 'Could not start repository analysis.')
+
+      let job = submission
+      if (submission.status !== 'ready') {
+        if (!submission.jobId) throw new Error('The analysis service returned no job identifier.')
+        setRun({ step: 1, pct: 0.1, log: `Commit resolved · ${submission.sha}`, done: false })
+        const startedAt = Date.now()
+        while (Date.now() - startedAt < 10 * 60 * 1000) {
+          const response = await authFetch(`/api/jobs/${encodeURIComponent(submission.jobId)}`)
+          job = await response.json()
+          if (!response.ok) throw new Error(job.error || 'Could not read analysis status.')
+          const pct = Math.max(0.1, Math.min(0.95, (job.progress || 0) / 100))
+          setRun({ step: 2, pct, log: `${job.stage || job.status} · ${Math.round(job.progress || 0)}%`, done: false })
+          setStatus({ t: 'Analyzing repository', s: `${job.stage || job.status} · ${Math.round(job.progress || 0)}%`, p: pct })
+          if (job.status === 'done') break
+          if (job.status === 'failed') throw new Error(job.error || 'Repository analysis failed.')
+          await new Promise(resolve => setTimeout(resolve, 1200))
+        }
+        if (job.status !== 'done') throw new Error('Repository analysis is taking too long. You can try again later.')
+      }
+
+      const snapshotUrl = job.snapshotUrl || submission.snapshotUrl
+      if (!snapshotUrl) throw new Error('The analysis completed without a snapshot URL.')
+      setRun({ step: 3, pct: 0.97, log: 'Loading analyzed snapshot…', done: false })
+      const snapshotResponse = await authFetch(snapshotUrl)
+      if (!snapshotResponse.ok) throw new Error('Could not load the analyzed snapshot.')
+      const snapshot = await snapshotResponse.json()
+      const fullname = snapshot.repo?.fullname || submission.fullname || job.fullname
+      const sha = snapshot.repo?.sha || submission.sha || job.sha
+      if (!fullname || !/^[0-9a-f]{40}$/i.test(sha || '')) throw new Error('The snapshot has an invalid repository identity.')
+
+      setSnapshot(snapshot)
+      setRepository({ fullname, sha })
+      setRepo(`${fullname} · ${sha.slice(0, 7)}`)
+      setSel(-1)
+      setStats(stats => ({ ...stats, a: stats.a + 1, f: snapshot.stats?.sourcefiles || snapshot.files?.length || 0 }))
+      setNewId(Date.now())
+      setRun({ step: 4, pct: 1, log: `${snapshot.stats?.sourcefiles || snapshot.files?.length || 0} analyzed files · ${sha.slice(0, 7)}`, done: true })
+      setStatus({ t: 'Atlas ready', s: `${fullname} · ${sha.slice(0, 7)}`, p: 1 })
+      say('Repository analysis complete')
+    } catch (error) {
+      const message = error.message || 'Could not analyze this repository.'
+      setErr(message)
+      setRun(null)
+      setStatus({ t: 'Analysis failed', s: message, p: null })
+    } finally {
+      busy.current = false
     }
-    const e = {
-      id: Date.now(), n: name, s: sha, l: hit ? prior.l : 'TypeScript', f: files,
-      h: hit ? prior.h : 60 + Math.floor(Math.random() * 30), cy: hit ? prior.cy : Math.floor(Math.random() * 5),
-      g: hit ? prior.g : Math.floor(Math.random() * 4), st: hit ? 'cached' : 'cast', ms: Date.now() - t0, at: Date.now(),
-    }
-    setHist(h => [e, ...h]); setNewId(e.id); setRepo(name + ' · ' + sha)
-    if (!hit) setStats(s => ({ a: s.a + 1, f: s.f + files }))
-    upd(true)
-    say(hit ? 'Found in the archive. Atlas revealed' : 'Atlas cast for ' + name)
-    setStatus({ t: 'Atlas ready', s: name + ' · ' + sha, p: 1 })
-    busy.current = false
-    setTimeout(() => { if (!busy.current) setStatus({ t: '', s: '', p: null }) }, 4500)
   }
   const submit = () => {
     const m = url.trim().match(GH)
     if (!m) { setErr('Enter a public GitHub URL like github.com/owner/repo.'); urlRef.current?.focus(); return }
-    setErr(''); cast(m[1])
-  }
-  const zip = f => {
-    if (!f) return
-    if (!/\.zip$/i.test(f.name)) { setErr('That file is not a .zip. Choose a zip archive of your repository.'); return }
-    setErr(''); cast(f.name.replace(/\.zip$/i, ''))
+    cast(`https://github.com/${m[1]}`)
   }
   const fill = v => { setUrl(v); setErr('') }
   return (
     <div className="card rise" style={{ '--i': 5 }} id="an">
-      <div className="ct"><h3>Cast a new atlas</h3><span className="mono">URL or zip · code is read, never run</span></div>
+      <div className="ct"><h3>Cast a new atlas</h3><span className="mono">Public GitHub repository · code is read, never run</span></div>
       <div className="row">
         <input ref={urlRef} value={url} onChange={e => { setUrl(e.target.value); setErr('') }} onKeyDown={e => e.key === 'Enter' && submit()} placeholder="https://github.com/expressjs/express" aria-label="GitHub repository URL" />
         <button className="pb" onClick={submit}>Cast atlas</button>
@@ -77,21 +91,17 @@ export default function CastCard() {
         <button className="chip" onClick={() => fill('https://github.com/expressjs/express')}>expressjs/express (from the archive)</button>
         <button className="chip" onClick={() => fill('https://github.com/pallets/click')}>pallets/click (full cast)</button>
       </div>
-      <label className={'dz' + (drag ? ' drag' : '')}
-        onDragEnter={e => { e.preventDefault(); setDrag(true) }} onDragOver={e => { e.preventDefault(); setDrag(true) }}
-        onDragLeave={e => { e.preventDefault(); setDrag(false) }} onDrop={e => { e.preventDefault(); setDrag(false); zip(e.dataTransfer.files[0]) }}>
-        <Icon n="file-zip" />Drop a .zip here or browse
-        <input type="file" accept=".zip" style={{ display: 'none' }} onChange={e => { zip(e.target.files[0]); e.target.value = '' }} />
-      </label>
+      <p className="mono">Analysis is pinned to the repository commit returned by GitHub.</p>
       <div className={'pipe' + (run ? ' on' : '')}>
         <div className="pbar"><i style={{ width: (run?.pct || 0) + '%' }} /></div>
         <div className="pg">
           <ul className="pl">
-            {STEPS.map((s, i) => (
-              <li key={i} className={run?.st[i] || ''}><span className="ic">{run?.st[i] === 'done' && <Icon n="check" />}</span>{s[0]}<small>{s[1]}</small></li>
-            ))}
+            {STEPS.map((label, i) => {
+              const state = run?.step > i ? 'done' : run?.step === i && !run?.done ? 'run' : ''
+              return <li key={label} className={state}><span className="ic">{state === 'done' && <Icon n="check" />}</span>{label}</li>
+            })}
           </ul>
-          <div className="lgb" aria-live="polite">{run?.log.map(l => <div key={l.k}><b>›</b> {l.t}</div>)}</div>
+          <div className="lgb" aria-live="polite"><div><b>›</b> {run?.log}</div></div>
         </div>
         <div className="row" style={{ marginTop: 12, justifyContent: 'flex-end' }}>
           {run?.done && <button className="pb" onClick={() => go('atlas')}>Open atlas <Icon n="arrow-right" /></button>}

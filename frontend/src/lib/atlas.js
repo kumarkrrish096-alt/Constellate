@@ -1,5 +1,5 @@
-import {N,E,C,CO,F,U,god,cyc,maxB,PAL} from './data'
-export function Atlas(cv,o,env){const pal=()=>PAL[env.theme()];
+import * as demo from './data'
+export function Atlas(cv,o,env,data=demo){const {N,E,C,CO,F,U,god,cyc,maxB}=data;const palette=data.PAL||demo.PAL;const pal=()=>palette[env.theme()];
 const x=cv.getContext('2d'),P=N.map(()=>({x:0,y:0,fx:0,fy:0,tx:0,ty:0}));
 let W=0,H=0,dp=1,v={x:0,y:0,k:1},tv={x:0,y:0,k:1},formed=false;
 const a={mode:'force',sel:-1,hov:-1,hi:null,q:null,co:false,cv};
