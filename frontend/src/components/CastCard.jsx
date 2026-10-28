@@ -32,7 +32,22 @@ function mapStageToStepIndex(stage) {
 }
 
 export default function CastCard() {
-  const { setHist, url, setUrl, urlRef, loadSnapshotData, setStatus, setNewId, say, go } = useDash();
+  const {
+    setHist,
+    url,
+    setUrl,
+    urlRef,
+    loadSnapshotData,
+    setStatus,
+    setNewId,
+    say,
+    go,
+    setSnapshot,
+    setRepository,
+    setRepo,
+    setSel,
+    setStats,
+  } = useDash();
   const [err, setErr] = useState('');
   const [run, setRun] = useState(null);
   const [drag, setDrag] = useState(false);
@@ -63,14 +78,13 @@ export default function CastCard() {
     };
 
     const t0 = Date.now();
-    const cleanRepoUrl = `https://github.com/${repoFullName}`;
-
-    // Step 0: Invoke
     st[0] = 'run';
-    push(`Invocation accepted for ${repoFullName}`);
+    push(`Invoking celestial forge for ${repoFullName}…`);
     pct = 10;
     upd();
     setStatus({ t: `Casting ${repoFullName}`, s: 'Step 1 of 9 · Invoke', p: 0.1 });
+
+    const cleanRepoUrl = `https://github.com/${repoFullName}`;
 
     try {
       await wait(300);
@@ -101,7 +115,13 @@ export default function CastCard() {
         pct = 100;
         push('The atlas is revealed');
 
-        const adapted = loadSnapshotData(snapshot, `${repoFullName} · ${sha.slice(0, 7)}`);
+        const adapted = loadSnapshotData ? loadSnapshotData(snapshot, `${repoFullName} · ${sha.slice(0, 7)}`) : { N: [], ring: [], god: -1, stats: { health: 80 } };
+
+        setSnapshot?.(snapshot);
+        setRepository?.({ fullname: repoFullName, sha });
+        setRepo?.(`${repoFullName} · ${sha.slice(0, 7)}`);
+        setSel?.(-1);
+        setStats?.(stats => ({ ...stats, a: (stats.a || 0) + 1, f: snapshot.stats?.sourcefiles || snapshot.files?.length || 0 }));
 
         const histEntry = {
           id: Date.now(),
@@ -119,8 +139,8 @@ export default function CastCard() {
           snapshot,
         };
 
-        setHist((h) => [histEntry, ...h]);
-        setNewId(histEntry.id);
+        setHist?.((h) => [histEntry, ...(h || [])]);
+        setNewId?.(histEntry.id);
         upd(true);
         say(`Found in archive. Atlas revealed for ${repoFullName}`);
         setStatus({ t: 'Atlas ready', s: `${repoFullName} · ${sha.slice(0, 7)}`, p: 1 });
@@ -193,7 +213,13 @@ export default function CastCard() {
               pct = 100;
               push('The atlas is revealed');
 
-              const adapted = loadSnapshotData(snapshot, `${repoFullName} · ${(jobView.sha || sha).slice(0, 7)}`);
+              const adapted = loadSnapshotData ? loadSnapshotData(snapshot, `${repoFullName} · ${(jobView.sha || sha).slice(0, 7)}`) : { N: [], ring: [], god: -1, stats: { health: 80 } };
+
+              setSnapshot?.(snapshot);
+              setRepository?.({ fullname: repoFullName, sha: (jobView?.sha || sha) });
+              setRepo?.(`${repoFullName} · ${(jobView?.sha || sha).slice(0, 7)}`);
+              setSel?.(-1);
+              setStats?.(stats => ({ ...stats, a: (stats.a || 0) + 1, f: snapshot.stats?.sourcefiles || snapshot.files?.length || 0 }));
 
               const histEntry = {
                 id: Date.now(),
@@ -211,8 +237,8 @@ export default function CastCard() {
                 snapshot,
               };
 
-              setHist((h) => [histEntry, ...h]);
-              setNewId(histEntry.id);
+              setHist?.((h) => [histEntry, ...(h || [])]);
+              setNewId?.(histEntry.id);
               upd(true);
               say(`Atlas cast for ${repoFullName}`);
               setStatus({ t: 'Atlas ready', s: `${repoFullName} · ${(jobView.sha || sha).slice(0, 7)}`, p: 1 });
@@ -262,7 +288,7 @@ export default function CastCard() {
         at: Date.now(),
         note: errorMsg,
       };
-      setHist((h) => [histEntry, ...h]);
+      setHist?.((h) => [histEntry, ...(h || [])]);
       say(`Cast fizzled: ${errorMsg}`);
       setStatus({ t: 'Cast fizzled', s: errorMsg, p: null });
     }
@@ -379,7 +405,7 @@ export default function CastCard() {
             ))}
           </ul>
           <div className="lgb" aria-live="polite">
-            {run?.log.map((l) => (
+            {run?.log?.map((l) => (
               <div key={l.k}>
                 <b>›</b> {l.t}
               </div>

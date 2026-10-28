@@ -1,17 +1,18 @@
 import { N as defN, E as defE, C as defC, CO as defCO, F as defF, U as defU, god as defGod, cyc as defCyc, maxB as defMaxB, PAL } from './data';
 
-export function Atlas(cv, o = {}, env) {
+export function Atlas(cv, o = {}, env, dataOverride) {
   const pal = () => PAL[env.theme()];
 
-  let N = o.data?.N || defN;
-  let E = o.data?.E || defE;
-  let C = o.data?.C || defC;
-  let CO = o.data?.CO || defCO;
-  let F = o.data?.F || defF;
-  let U = o.data?.U || defU;
-  let god = o.data?.god !== undefined ? o.data.god : defGod;
-  let cyc = o.data?.cyc || defCyc;
-  let maxB = o.data?.maxB || defMaxB;
+  const initData = dataOverride || o.data;
+  let N = initData?.N || defN;
+  let E = initData?.E || defE;
+  let C = initData?.C || defC;
+  let CO = initData?.CO || defCO;
+  let F = initData?.F || defF;
+  let U = initData?.U || defU;
+  let god = initData?.god !== undefined ? initData.god : defGod;
+  let cyc = initData?.cyc || defCyc;
+  let maxB = initData?.maxB || defMaxB;
 
   const x = cv.getContext('2d');
   let P = N.map(() => ({ x: 0, y: 0, fx: 0, fy: 0, tx: 0, ty: 0 }));

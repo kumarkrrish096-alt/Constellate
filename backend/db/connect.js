@@ -10,6 +10,8 @@ import Session from "../models/session.js"
 
 import User from "../models/user.js"
 
+import Explanation from "../models/explanation.js"
+
 export async function connectdb(){
     await mongoose.connect(process.env.MONGODB_URI,{
         dbName:process.env.DB_NAME
@@ -17,7 +19,7 @@ export async function connectdb(){
 
 
 
-    await Promise.all( [ Repository.init() , Job.init() , Snapshot.init() , User.init() , Session.init() ] )
+    await Promise.all( [ Repository.init() , Job.init() , Snapshot.init() , User.init() , Session.init() , Explanation.init() ] )
 
     console.log("connected to mongodb");
 }

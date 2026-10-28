@@ -16,7 +16,9 @@ export default function AtlasCanvas({ className, label, mini, data, onReady, onH
 
   useEffect(() => {
     if (atlasInst.current && data) {
-      atlasInst.current.setData(data);
+      if (typeof atlasInst.current.setData === 'function') {
+        atlasInst.current.setData(data);
+      }
     }
   }, [data]);
 
@@ -25,7 +27,7 @@ export default function AtlasCanvas({ className, label, mini, data, onReady, onH
     const opts = mini
       ? { mini: true, data }
       : { inter: true, data, hover: (h, x, y) => cb.current.onHover?.(h, x, y), click: (h) => cb.current.onClick?.(h) };
-    const a = Atlas(cv.current, opts, env);
+    const a = Atlas(cv.current, opts, env, data);
     atlasInst.current = a;
     onReady?.(a);
     let raf, t0 = 0;

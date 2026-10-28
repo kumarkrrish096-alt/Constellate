@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import AtlasCanvas from '../components/AtlasCanvas';
 import CodePanel from '../components/CodePanel';
 import Icon from '../components/Icon';
@@ -6,6 +6,7 @@ import { useDash } from '../components/DashContext';
 import { usePrefs } from '../components/Prefs';
 import { N as defN, PAL } from '../lib/data';
 import { dl, snapshot } from '../lib/utils';
+import { snapshotAtlas } from '../lib/snapshotAtlas';
 
 const MODES = [
   ['force', 'Force'],
@@ -14,10 +15,28 @@ const MODES = [
 ];
 
 export default function AtlasView() {
-  const { view, repo, atRef, sel, note, pickNode, dd, setDd, say, mode, setAtlasMode, activeData } = useDash();
+  const {
+    view,
+    repo,
+    repository,
+    snapshot: analyzedSnapshot,
+    atRef,
+    sel,
+    note,
+    pickNode,
+    dd,
+    setDd,
+    say,
+    mode,
+    setAtlasMode,
+    activeData,
+  } = useDash();
   const { theme } = usePrefs();
   const p = PAL[theme] || PAL.dark;
-  const N = activeData?.N || defN;
+
+  const graphData = useMemo(() => (analyzedSnapshot ? snapshotAtlas(analyzedSnapshot) : null), [analyzedSnapshot]);
+  const currentData = graphData || activeData;
+  const N = currentData?.N || defN;
 
   const [co, setCo] = useState(false);
   const [q, setQ] = useState('');
@@ -30,7 +49,7 @@ export default function AtlasView() {
     atRef.current?.setQ(t ? new Set(N.filter((n) => n.name.toLowerCase().includes(t)).slice(0, 6).map((n) => n.id)) : null);
   }, [t, atRef, N]);
 
-  const sha = repo.split(' · ')[1] || 'HEAD';
+  const sha = repository?.sha || repo?.split(' · ')[1] || 'HEAD';
 
   const clear = () => {
     setQ('');
@@ -56,7 +75,7 @@ export default function AtlasView() {
         say('SVG saved');
       }
     } else {
-      const snapData = activeData?.raw || snapshot(repo);
+      const snapData = analyzedSnapshot || currentData?.raw || snapshot(repo);
       dl(JSON.stringify(snapData, null, 2), 'constellate-snapshot.json', 'application/json');
       say('JSON snapshot saved');
     }
@@ -196,9 +215,10 @@ export default function AtlasView() {
           </div>
           <div className="mapw">
             <AtlasCanvas
+              key={repository?.sha || 'demo-atlas'}
               className="cv big"
               label="Interactive dependency graph"
-              data={activeData}
+              data={currentData}
               onReady={(a) => (atRef.current = a)}
               onClick={pickNode}
               onHover={(h, x, y) =>
@@ -232,7 +252,7 @@ export default function AtlasView() {
             <span className="mono">{sel >= 0 && N[sel] ? N[sel].name : note || 'no file selected'}</span>
           </div>
           <div className="pnl">
-            <CodePanel i={sel} data={activeData} />
+            <CodePanel i={sel} data={currentData} repository={repository} />
           </div>
         </div>
       </div>

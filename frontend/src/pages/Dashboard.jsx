@@ -25,6 +25,8 @@ export default function Dashboard() {
   const [sel, setSel] = useState(-1);
   const [note, setNote] = useState('');
   const [repo, setRepo] = useState('expressjs/express · a3f9c1e');
+  const [repository, setRepository] = useState(null);
+  const [snapshot, setSnapshot] = useState(null);
   const [stats, setStats] = useState({ a: 12, f: 4812, cycles: 9, health: 74 });
   const [status, setStatus] = useState({ t: '', s: '', p: null });
   const [url, setUrl] = useState('');
@@ -114,9 +116,13 @@ export default function Dashboard() {
     }, 140);
   };
 
-  const loadSnapshotData = (snapshot, label) => {
-    const adapted = adaptSnapshot(snapshot, label);
+  const loadSnapshotData = (snap, label) => {
+    const adapted = adaptSnapshot(snap, label);
     setActiveData(adapted);
+    setSnapshot(snap);
+    if (snap?.repo?.fullname && snap?.repo?.sha) {
+      setRepository({ fullname: snap.repo.fullname, sha: snap.repo.sha });
+    }
     setRepo(adapted.label);
     setStats((s) => ({
       a: s.a + (adapted.isDemo ? 0 : 1),
@@ -222,6 +228,10 @@ export default function Dashboard() {
     note,
     repo,
     setRepo,
+    repository,
+    setRepository,
+    snapshot,
+    setSnapshot,
     stats,
     setStats,
     status,

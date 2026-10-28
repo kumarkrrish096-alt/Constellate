@@ -1,17 +1,11 @@
-// AuthService.js — real backend integration
-// Handles email signup, email login, OAuth, password reset, and session management.
-//
-// Session model:
-//  - Access token (15 min JWT) lives only in this module's memory, never in
-//    localStorage, so injected scripts cannot lift a long-lived credential.
-//  - Refresh token lives in an httpOnly cookie that JavaScript cannot read; the
-//    backend swaps it for a new access token via POST /api/auth/refresh.
-//  - The user's name/email is cached in localStorage purely to paint the UI
-//    instantly; it grants no access.
-
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const USER_KEY = "constellate_user";
 
-// ── Error classes ───────────────────────────────────────────
+let accessToken = null;
+let refreshInFlight = null;
+
+// Older builds kept the JWT itself in localStorage; remove it.
+try { localStorage.removeItem("constellate_token"); } catch {}
 
 export class AuthError extends Error {
   constructor(message, errors = null) {
@@ -28,15 +22,11 @@ export class AuthNotConnectedError extends AuthError {
   }
 }
 
-// ── Session state ───────────────────────────────────────────
-
-const USER_KEY = "constellate_user";
-
-let accessToken = null;
-let refreshInFlight = null;
-
-// Older builds kept the JWT itself in localStorage; remove it.
-try { localStorage.removeItem("constellate_token"); } catch {}
+function notifyAuthChange(user) {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("constellate_auth", { detail: user }));
+  }
+}
 
 export function getToken() {
   return accessToken;
@@ -51,40 +41,31 @@ export function getUser() {
   }
 }
 
-/** Quick, synchronous hint for first paint. Confirm with restoreSession(). */
 export function isLoggedIn() {
-  return !!getUser();
+  return Boolean(getUser());
 }
 
-function setSession(data) {
+export function saveSession(data = {}) {
   accessToken = data?.accessToken || data?.token || null;
   if (data?.user) {
-    try { localStorage.setItem(USER_KEY, JSON.stringify(data.user)); } catch {}
+    try {
+      localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+    } catch {}
   }
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(
-      new CustomEvent("constellate_auth", { detail: data?.user || null })
-    );
-  }
-}
-
-export function saveSession(data) {
-  setSession(data);
+  notifyAuthChange(data?.user || null);
 }
 
 export function clearSession() {
   accessToken = null;
-  try { localStorage.removeItem(USER_KEY); } catch {}
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(
-      new CustomEvent("constellate_auth", { detail: null })
-    );
-  }
+  try {
+    localStorage.removeItem(USER_KEY);
+  } catch {}
+  notifyAuthChange(null);
 }
 
-async function readJson(res) {
+async function readJson(response) {
   try {
-    return await res.json();
+    return await response.json();
   } catch {
     return {};
   }
@@ -101,19 +82,21 @@ export function refreshSession() {
   if (!refreshInFlight) {
     refreshInFlight = (async () => {
       try {
-        const res = await fetch(`${API}/api/auth/refresh`, {
+        const response = await fetch(`${API}/api/auth/refresh`, {
           method: "POST",
           credentials: "include",
         });
-        if (!res.ok) {
-          clearSession();
+        const data = await readJson(response);
+
+        if (!response.ok || !data.accessToken) {
+          accessToken = null;
+          if (response.status === 401) clearSession();
           return null;
         }
-        const data = await readJson(res);
-        setSession(data);
-        return data.user;
+
+        saveSession(data);
+        return data.user || getUser();
       } catch {
-        // Network failure: keep the cached user, the next call will retry.
         return null;
       } finally {
         refreshInFlight = null;
@@ -123,13 +106,27 @@ export function refreshSession() {
   return refreshInFlight;
 }
 
-/** Call on app start: resolves to the signed-in user or null. */
-export const restoreSession = refreshSession;
+export async function restoreSession() {
+  return (await refreshSession()) || getUser();
+}
 
-/**
- * fetch() for protected API routes: attaches the access token and, if it has
- * expired, refreshes once and retries.
- */
+/** Called on /auth/callback: supports query params or refresh cookie. */
+export async function completeOAuthSignIn(params) {
+  if (params) {
+    const token = typeof params.get === "function" ? params.get("token") : params.token;
+    if (token) {
+      const user = {
+        id: typeof params.get === "function" ? params.get("id") : params.id,
+        name: typeof params.get === "function" ? params.get("name") : params.name,
+        email: typeof params.get === "function" ? params.get("email") : params.email,
+      };
+      saveSession({ accessToken: token, user });
+      return user;
+    }
+  }
+  return refreshSession();
+}
+
 export async function authFetch(path, options = {}) {
   if (!accessToken) await refreshSession();
 
@@ -143,44 +140,40 @@ export async function authFetch(path, options = {}) {
       },
     });
 
-  let res = await send();
-  if (res.status === 401 && (await refreshSession())) {
-    res = await send();
+  let response = await send();
+  if (response.status === 401 && (await refreshSession())) {
+    response = await send();
   }
-  return res;
+  return response;
 }
 
-// ── Authentication API calls ────────────────────────────────
-
 async function postAuth(path, body, fallbackMessage) {
-  const res = await fetch(`${API}/api/auth/${path}`, {
+  const response = await fetch(`${API}/api/auth/${path}`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  const data = await readJson(response);
 
-  const data = await readJson(res);
-
-  if (!res.ok) {
+  if (!response.ok) {
     throw new AuthError(data.error || fallbackMessage, data.errors);
   }
   return data;
 }
 
-export const signUpWithEmail = async ({ name, email, password }) => {
+export async function signUpWithEmail({ name, email, password }) {
   const data = await postAuth("signup", { name, email, password }, "Signup failed");
-  setSession(data);
+  saveSession(data);
   return data;
-};
+}
 
-export const signInWithEmail = async ({ email, password, remember = true }) => {
+export async function signInWithEmail({ email, password, remember = true }) {
   const data = await postAuth("login", { email, password, remember }, "Login failed");
-  setSession(data);
+  saveSession(data);
   return data;
-};
+}
 
-// Sign out of current device session
 export async function logout() {
   try {
     await fetch(`${API}/api/auth/logout`, {
@@ -191,8 +184,8 @@ export async function logout() {
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       },
     });
-  } catch (e) {
-    console.warn("Logout session revocation notification failed:", e);
+  } catch (error) {
+    console.warn("Logout session revocation notification failed:", error);
   }
   clearSession();
 }
@@ -205,45 +198,26 @@ export async function logoutEverywhere() {
 
 // ── OAuth ───────────────────────────────────────────────────
 
-// Full-page redirect to the backend, which redirects to Google/GitHub.
 export const signInWithProvider = (provider, mode = "login") => {
   window.location.href = `${API}/api/auth/${provider}?mode=${encodeURIComponent(mode)}`;
 };
 
-/** Called on /auth/callback: supports query params or refresh cookie. */
-export async function completeOAuthSignIn(params) {
-  if (params) {
-    const token = typeof params.get === "function" ? params.get("token") : params.token;
-    if (token) {
-      const user = {
-        id: typeof params.get === "function" ? params.get("id") : params.id,
-        name: typeof params.get === "function" ? params.get("name") : params.name,
-        email: typeof params.get === "function" ? params.get("email") : params.email,
-      };
-      setSession({ accessToken: token, user });
-      return user;
-    }
-  }
-  return refreshSession();
-}
-
 const PROVIDER_NAMES = { google: "Google", github: "GitHub" };
 
-/** Map the backend's fixed OAuth error codes to display text. */
 export function oauthErrorMessage(code, provider) {
-  const p = PROVIDER_NAMES[provider] || "That provider";
+  const name = PROVIDER_NAMES[provider] || "That provider";
   const messages = {
-    oauth_cancelled: `${p} sign-in was cancelled.`,
+    oauth_cancelled: `${name} sign-in was cancelled.`,
     oauth_state: "That sign-in attempt expired or was started in another browser. Please try again.",
-    oauth_failed: `${p} sign-in failed. Please try again.`,
-    oauth_not_configured: `${p} sign-in isn't set up on this server yet.`,
-    email_unverified: `Your ${p} account has no verified email address. Verify one with ${p}, then try again.`,
-    provider_conflict: `This email is already linked to a different ${p} account.`,
-    no_account: `No Constellate account found for this ${p} account. Please sign up first.`,
-    account_exists: `You already have an account with this ${p} email. Please log in instead.`,
+    oauth_failed: `${name} sign-in failed. Please try again.`,
+    oauth_not_configured: `${name} sign-in isn't set up on this server yet.`,
+    email_unverified: `Your ${name} account has no verified email address. Verify one with ${name}, then try again.`,
+    provider_conflict: `This email is already linked to a different ${name} account.`,
+    no_account: `No Constellate account found for this ${name} account. Please sign up first.`,
+    account_exists: `You already have an account with this ${name} email. Please log in instead.`,
     session_failed: "We couldn't finish signing you in. Please try again.",
   };
-  return messages[code] || code || "Sign-in failed. Please try again.";
+  return messages[code] || "Sign-in failed. Please try again.";
 }
 
 // ── Password Recovery & Profile Management ──────────────────
@@ -263,7 +237,7 @@ export const getCurrentUserProfile = async () => {
       }
       return null;
     }
-    return await res.json().catch(() => null);
+    return await readJson(res);
   } catch {
     return null;
   }
