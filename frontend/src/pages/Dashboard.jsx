@@ -21,6 +21,8 @@ export default function Dashboard() {
   const [hist, setHistS] = useState(() => loadHist(seedH))
   const [sel, setSel] = useState(-1), [note, setNote] = useState('')
   const [repo, setRepo] = useState('expressjs/express · a3f9c1e')
+  const [repository, setRepository] = useState(null)
+  const [snapshot, setSnapshot] = useState(null)
   const [stats, setStats] = useState({ a: 12, f: 4812 })
   const [status, setStatus] = useState({ t: '', s: '', p: null })
   const [url, setUrl] = useState(''), [mode, setMode] = useState('force'), [hk, setHk] = useState(0)
@@ -83,7 +85,7 @@ export default function Dashboard() {
   }, [])
 
   const ctx = {
-    view, go, dd, setDd, pop, showPop, hist, setHist, sel, setSel, note, repo, setRepo, stats, setStats,
+    view, go, dd, setDd, pop, showPop, hist, setHist, sel, setSel, note, repo, setRepo, repository, setRepository, snapshot, setSnapshot, stats, setStats,
     status, setStatus, url, setUrl, urlRef, atRef, mode, setAtlasMode, hk, newId, setNewId, badge, setBadge,
     say, hold, unhold, pickNode, showCycle, showHeat, focusCast, openCast,
   }

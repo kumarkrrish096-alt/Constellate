@@ -1,87 +1,46 @@
+import fs from "fs/promises";
 import path from "path";
-import { Octokit } from "@octokit/rest";
+import { analyzefolder } from "./analyze.js";
+import { LIMITS } from "../config/limits.js";
+import { cleanupfolder } from "../services/cleanup.js";
+import { downloadzip } from "../services/download.js";
+import { unzipsafely } from "../services/unzip.js";
 
 // Bump this whenever the snapshot format or the analysis changes. Snapshots made
 // by an older version no longer count as a cache hit, so those repos are
 // analysed again on their next request.
 export const ANALYSIS_VERSION = 1;
 
-/**
- * Turns one (repo, commit) into the data stored in its snapshot.
- *
- * PLACEHOLDER until Section C (ingestion): this only lists the commit's files
- * and languages through the GitHub API. The full engine is analyzefolder()
- * in ./analyze.js, but it needs the repository on disk. Once C clones the
- * commit into a temp folder, this body becomes:
- *
- *   const snapshot = await analyzefolder(folder, { repo: { fullname, sha, branch }, issues: true, report });
- *   return { version: ANALYSIS_VERSION, ...snapshot };   // and bump ANALYSIS_VERSION to 2
- *
- * The worker around it stays the same.
- *
- * `report(stage, progress)` updates the job's progress bar (0 to 100).
- * Throw an error with `retryable: false` for failures that will not go away
- * on a retry (the repo is gone, too large...); anything else is retried.
- */
-export async function runanalysis({ fullname, sha, branch }, report) {
+/** Analyze the source archive for one exact public repository commit. */
+export async function runanalysis({ fullname, sha, branch }, report = () => {}) {
   const [owner, repo] = fullname.split("/");
-  const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-
-  report("listing files", 10);
-
-  let tree;
+  let archive;
   try {
-    const result = await octokit.rest.git.getTree({ owner, repo, tree_sha: sha, recursive: "true" });
-    tree = result.data;
+    report("downloading source", 5);
+    archive = await downloadzip(owner, repo, sha);
   } catch (error) {
-    throw githuberror(error);
+    if (error.status) throw githuberror(error);
+    throw error;
   }
 
-  report("detecting languages", 60);
+  try {
+    const sourcefolder = path.join(archive.folder, "source");
+    await fs.mkdir(sourcefolder, { recursive: true });
+    report("extracting source", 10);
+    await unzipsafely(archive.zippath, sourcefolder);
 
-  const files = tree.tree
-    .filter((entry) => entry.type === "blob")
-    .map((entry) => ({
-      path: entry.path,
-      size: entry.size ?? 0,
-      language: detectlanguage(entry.path),
-    }));
+    const snapshot = await analyzefolder(sourcefolder, {
+      repo: { fullname, sha, branch },
+      history: false,
+      limits: { maxFiles: LIMITS.maxFiles, maxFileBytes: LIMITS.maxFileBytes },
+      report,
+    });
 
-  const languages = {};
-  for (const file of files) {
-    if (file.language) languages[file.language] = (languages[file.language] || 0) + 1;
+    report("writing snapshot", 98);
+    return { version: ANALYSIS_VERSION, ...snapshot };
+  } finally {
+    await cleanupfolder(archive.folder);
   }
-
-  report("writing snapshot", 90);
-
-  return {
-    version: ANALYSIS_VERSION,
-    fullname,
-    sha,
-    branch,
-    generatedat: new Date().toISOString(),
-    placeholder: true,
-    // GitHub stops listing very large trees; the real ingestion reads the clone instead
-    truncated: Boolean(tree.truncated),
-    stats: {
-      files: files.length,
-      bytes: files.reduce((sum, file) => sum + file.size, 0),
-      languages,
-    },
-    files,
-  };
-}
-
-const EXTENSIONS = {
-  ".js": "javascript", ".jsx": "javascript", ".mjs": "javascript", ".cjs": "javascript",
-  ".ts": "typescript", ".tsx": "typescript",
-  ".py": "python", ".java": "java", ".go": "go", ".rs": "rust", ".rb": "ruby",
-  ".c": "c", ".h": "c", ".cpp": "cpp", ".cc": "cpp", ".hpp": "cpp",
-  ".cs": "csharp", ".php": "php", ".kt": "kotlin", ".swift": "swift",
-};
-
-function detectlanguage(filepath) {
-  return EXTENSIONS[path.extname(filepath).toLowerCase()] || null;
 }
 
 function githuberror(error) {

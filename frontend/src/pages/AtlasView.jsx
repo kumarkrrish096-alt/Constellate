@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import AtlasCanvas from '../components/AtlasCanvas'
 import CodePanel from '../components/CodePanel'
 import Icon from '../components/Icon'
@@ -6,16 +6,19 @@ import { useDash } from '../components/DashContext'
 import { usePrefs } from '../components/Prefs'
 import { N, PAL } from '../lib/data'
 import { dl, snapshot } from '../lib/utils'
+import { snapshotAtlas } from '../lib/snapshotAtlas'
 
 const MODES = [['force', 'Force'], ['tree', 'Hierarchy'], ['heat', 'Heatmap']]
 
 export default function AtlasView() {
-  const { view, repo, atRef, sel, note, pickNode, dd, setDd, say, mode, setAtlasMode } = useDash()
+  const { view, repo, repository, snapshot: analyzedSnapshot, atRef, sel, note, pickNode, dd, setDd, say, mode, setAtlasMode } = useDash()
   const { theme } = usePrefs(), p = PAL[theme]
   const [co, setCo] = useState(false), [q, setQ] = useState(''), [tt, setTt] = useState({ t: '', x: 0, y: 0, on: false })
-  const t = q.trim().toLowerCase(), m = t ? N.filter(n => n.name.includes(t)).slice(0, 6) : []
-  useEffect(() => { atRef.current?.setQ(t ? new Set(N.filter(n => n.name.includes(t)).slice(0, 6).map(n => n.id)) : null) }, [t, atRef])
-  const sha = repo.split(' · ')[1]
+  const graphData = useMemo(() => analyzedSnapshot ? snapshotAtlas(analyzedSnapshot) : null, [analyzedSnapshot])
+  const nodes = useMemo(() => graphData?.N || N, [graphData])
+  const t = q.trim().toLowerCase(), m = t ? nodes.filter(n => n.name.toLowerCase().includes(t)).slice(0, 6) : []
+  useEffect(() => { atRef.current?.setQ(t ? new Set(nodes.filter(n => n.name.toLowerCase().includes(t)).slice(0, 6).map(n => n.id)) : null) }, [t, atRef, nodes])
+  const sha = repository?.sha || repo.split(' · ')[1]
 
   const clear = () => { setQ(''); setDd(null) }
   const choose = id => { clear(); pickNode(id) }
@@ -23,7 +26,7 @@ export default function AtlasView() {
     setDd(null); const at = atRef.current
     if (k === 'png') at.png(b => { dl(b, 'constellate-atlas.png'); say('PNG saved') })
     else if (k === 'svg') { dl(at.svg(), 'constellate-atlas.svg', 'image/svg+xml'); say('SVG saved') }
-    else { dl(JSON.stringify(snapshot(repo), null, 2), 'constellate-snapshot.json', 'application/json'); say('JSON snapshot saved') }
+    else { dl(JSON.stringify(analyzedSnapshot || snapshot(repo), null, 2), 'constellate-snapshot.json', 'application/json'); say('JSON snapshot saved') }
   }
   const legend = mode === 'heat'
     ? [[`rgba(${p.ink},.5)`, 'low risk'], [p.gold, 'medium'], [p.hot, 'high risk']]
@@ -64,8 +67,8 @@ export default function AtlasView() {
             </div>
           </div>
           <div className="mapw">
-            <AtlasCanvas className="cv big" label="Interactive dependency graph" onReady={a => (atRef.current = a)} onClick={pickNode}
-              onHover={(h, x, y) => (h < 0 ? setTt(s => ({ ...s, on: false })) : setTt({ t: N[h].name + ' · cx ' + N[h].cx, x: x + 12, y: y - 8, on: true }))} />
+            <AtlasCanvas key={repository?.sha || 'demo-atlas'} data={graphData || undefined} className="cv big" label="Interactive dependency graph" onReady={a => (atRef.current = a)} onClick={pickNode}
+              onHover={(h, x, y) => (h < 0 || !nodes[h] ? setTt(s => ({ ...s, on: false })) : setTt({ t: nodes[h].name + ' · cx ' + nodes[h].cx, x: x + 12, y: y - 8, on: true }))} />
             <div className="tt" style={{ left: tt.x, top: tt.y, opacity: tt.on ? 1 : 0 }}>{tt.t}</div>
           </div>
           <div className="lgd mono">
@@ -74,8 +77,8 @@ export default function AtlasView() {
           </div>
         </div>
         <div className="card rise" style={{ '--i': 2 }}>
-          <div className="ct"><h3>Code panel</h3><span className="mono">{sel >= 0 ? N[sel].name : note || 'no file selected'}</span></div>
-          <div className="pnl"><CodePanel i={sel} /></div>
+          <div className="ct"><h3>Code panel</h3><span className="mono">{sel >= 0 ? nodes[sel]?.name : note || 'no file selected'}</span></div>
+          <div className="pnl"><CodePanel i={sel} data={graphData} repository={repository} /></div>
         </div>
       </div>
     </section>

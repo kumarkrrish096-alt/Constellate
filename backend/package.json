@@ -8,13 +8,16 @@
     "dev": "node --watch server.js",
     "worker": "node worker.js",
     "worker:dev": "node --watch worker.js",
-    "analyze": "node analysis/cli.js"
+    "analyze": "node analysis/cli.js",
+    "test": "node --test",
+    "test:ai": "node --test services/aiContext.test.js services/aiExplanation.test.js services/explanations.test.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@google/genai": "^2.31.0",
     "@octokit/rest": "^22.0.1",
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
@@ -28,12 +31,12 @@
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.11.3",
-    "yauzl": "^3.4.0",
     "simple-git": "^4.0.2",
     "tree-sitter-javascript": "^0.25.0",
     "tree-sitter-python": "^0.25.0",
     "tree-sitter-typescript": "^0.23.2",
     "web-tree-sitter": "^0.27.1",
+    "yauzl": "^3.4.0",
     "zod": "^4.6.7"
   }
 }
