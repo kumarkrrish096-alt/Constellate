@@ -4,6 +4,9 @@ const USER_KEY = "constellate_user";
 let accessToken = null;
 let refreshInFlight = null;
 
+// Older builds kept the JWT itself in localStorage; remove it.
+try { localStorage.removeItem("constellate_token"); } catch {}
+
 export class AuthError extends Error {
   constructor(message, errors = null) {
     super(message);
@@ -12,10 +15,21 @@ export class AuthError extends Error {
   }
 }
 
+export class AuthNotConnectedError extends AuthError {
+  constructor() {
+    super("Authentication is not connected yet.");
+    this.name = "AuthNotConnectedError";
+  }
+}
+
 function notifyAuthChange(user) {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("constellate_auth", { detail: user }));
   }
+}
+
+export function getToken() {
+  return accessToken;
 }
 
 export function getUser() {
@@ -32,13 +46,13 @@ export function isLoggedIn() {
 }
 
 export function saveSession(data = {}) {
-  if (data.accessToken) accessToken = data.accessToken;
-  if (data.user) {
+  accessToken = data?.accessToken || data?.token || null;
+  if (data?.user) {
     try {
       localStorage.setItem(USER_KEY, JSON.stringify(data.user));
     } catch {}
   }
-  notifyAuthChange(data.user || null);
+  notifyAuthChange(data?.user || null);
 }
 
 export function clearSession() {
@@ -57,32 +71,38 @@ async function readJson(response) {
   }
 }
 
-async function refreshSession() {
-  if (refreshInFlight) return refreshInFlight;
+// ── Token refresh ───────────────────────────────────────────
 
-  refreshInFlight = (async () => {
-    try {
-      const response = await fetch(`${API}/api/auth/refresh`, {
-        method: "POST",
-        credentials: "include",
-      });
-      const data = await readJson(response);
+/**
+ * Exchange the refresh cookie for a new access token. Concurrent callers share
+ * one request, so a burst of 401s triggers a single refresh.
+ * Resolves to the user, or null when there is no valid session.
+ */
+export function refreshSession() {
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      try {
+        const response = await fetch(`${API}/api/auth/refresh`, {
+          method: "POST",
+          credentials: "include",
+        });
+        const data = await readJson(response);
 
-      if (!response.ok || !data.accessToken) {
-        accessToken = null;
-        if (response.status === 401) clearSession();
+        if (!response.ok || !data.accessToken) {
+          accessToken = null;
+          if (response.status === 401) clearSession();
+          return null;
+        }
+
+        saveSession(data);
+        return data.user || getUser();
+      } catch {
         return null;
+      } finally {
+        refreshInFlight = null;
       }
-
-      saveSession(data);
-      return data.user || getUser();
-    } catch {
-      return null;
-    } finally {
-      refreshInFlight = null;
-    }
-  })();
-
+    })();
+  }
   return refreshInFlight;
 }
 
@@ -90,7 +110,20 @@ export async function restoreSession() {
   return (await refreshSession()) || getUser();
 }
 
-export async function completeOAuthSignIn() {
+/** Called on /auth/callback: supports query params or refresh cookie. */
+export async function completeOAuthSignIn(params) {
+  if (params) {
+    const token = typeof params.get === "function" ? params.get("token") : params.token;
+    if (token) {
+      const user = {
+        id: typeof params.get === "function" ? params.get("id") : params.id,
+        name: typeof params.get === "function" ? params.get("name") : params.name,
+        email: typeof params.get === "function" ? params.get("email") : params.email,
+      };
+      saveSession({ accessToken: token, user });
+      return user;
+    }
+  }
   return refreshSession();
 }
 
@@ -146,7 +179,10 @@ export async function logout() {
     await fetch(`${API}/api/auth/logout`, {
       method: "POST",
       credentials: "include",
-      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      headers: {
+        "Content-Type": "application/json",
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
     });
   } catch (error) {
     console.warn("Logout session revocation notification failed:", error);
@@ -154,17 +190,13 @@ export async function logout() {
   clearSession();
 }
 
-export const requestPasswordReset = (email) =>
-  postAuth("forgot-password", { email }, "Password reset request failed");
-
-export const resetPassword = (token, newPassword) =>
-  postAuth("reset-password", { token, newPassword }, "Password reset failed");
-
-export async function getCurrentUserProfile() {
-  const response = await authFetch("/api/auth/me");
-  if (!response.ok) return null;
-  return readJson(response);
+/** Sign out of every device. */
+export async function logoutEverywhere() {
+  await authFetch("/api/auth/logout-all", { method: "POST" });
+  clearSession();
 }
+
+// ── OAuth ───────────────────────────────────────────────────
 
 export const signInWithProvider = (provider, mode = "login") => {
   window.location.href = `${API}/api/auth/${provider}?mode=${encodeURIComponent(mode)}`;
@@ -187,3 +219,26 @@ export function oauthErrorMessage(code, provider) {
   };
   return messages[code] || "Sign-in failed. Please try again.";
 }
+
+// ── Password Recovery & Profile Management ──────────────────
+
+export const requestPasswordReset = (email) =>
+  postAuth("forgot-password", { email }, "Password reset request failed");
+
+export const resetPassword = (token, newPassword) =>
+  postAuth("reset-password", { token, newPassword }, "Password reset failed");
+
+export const getCurrentUserProfile = async () => {
+  try {
+    const res = await authFetch("/api/auth/me");
+    if (!res.ok) {
+      if (res.status === 401) {
+        clearSession();
+      }
+      return null;
+    }
+    return await readJson(res);
+  } catch {
+    return null;
+  }
+};
