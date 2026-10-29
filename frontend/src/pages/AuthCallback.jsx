@@ -8,32 +8,16 @@ export default function AuthCallback() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = params.get("token");
-    const error = params.get("error");
+    let active = true;
 
-    if (error) {
-      // OAuth failed — redirect to login with error message
-      navigate(`/login?error=${encodeURIComponent(error)}`, { replace: true });
-      return;
-    }
+    completeOAuthSignIn().then((user) => {
+      if (active) navigate(user ? "/dashboard" : "/login", { replace: true });
+    });
 
-    if (token) {
-      // Save session via AuthService
-      saveSession({
-        token,
-        user: {
-          id: params.get("id"),
-          name: params.get("name"),
-          email: params.get("email"),
-        },
-      });
-
-      // Redirect to dashboard
-      navigate("/dashboard", { replace: true });
-    } else {
-      navigate("/login", { replace: true });
-    }
-  }, [params, navigate]);
+    return () => {
+      active = false;
+    };
+  }, [navigate]);
 
   return (
     <div

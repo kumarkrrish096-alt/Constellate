@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "dotenv/config"; // reloaded: gemini-3-flash-preview + thinkingBudget 0
 import express from "express"
 import cors from "cors";
 import helmet from "helmet";
@@ -12,8 +12,9 @@ import analyzerouter from "./routes/analyze.js";
 import snapshotsrouter from "./routes/snapshots.js";
 import authrouter from "./routes/auth.js";
 import oauthrouter from "./routes/oauth.js";
+import explanationsrouter from "./routes/explanations.js";
 import { requireauth } from "./middleware/auth.js";
-import { analyzelimiter } from "./middleware/ratelimit.js";
+import { analyzelimiter, explanationlimiter } from "./middleware/ratelimit.js";
 import { assertAuthConfig, FRONTEND_URL } from "./config/auth.js";
 
 assertAuthConfig();
@@ -48,6 +49,7 @@ app.use("/api/snapshots", snapshotsrouter);
 // Protected routes (require valid JWT)
 // Starting an analysis needs an account, which is what the rate limit counts against.
 app.use("/api/analyze", requireauth, analyzelimiter, analyzerouter);
+app.use("/api/explanations", requireauth, explanationlimiter, explanationsrouter);
 
 
 try {

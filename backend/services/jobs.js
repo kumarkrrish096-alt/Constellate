@@ -1,8 +1,11 @@
+import fs from "fs/promises";
+import path from "path";
 import Job from "../models/job.js";
 
 import Repository from "../models/repository.js"
 
 import Snapshot from "../models/snapshot.js";
+import { SNAPSHOT_DIR } from "../config/paths.js";
 
 import { ANALYSIS_VERSION } from "../analysis/pipeline.js";
 
@@ -12,7 +15,20 @@ const RETRY_FAILED_AFTER_MS = 10 * 60 * 1000;
 
 // only snapshots made by the current analysis count; older ones get re-analysed
 export async function findsnapshot(fullname, sha) {
-    return await Snapshot.findOne({ fullname, sha, version: ANALYSIS_VERSION }).lean();
+        const snapshot = await Snapshot.findOne({ fullname, sha, version: ANALYSIS_VERSION }).lean();
+        if (!snapshot?.filepath) return null;
+
+        const root = path.resolve(SNAPSHOT_DIR);
+        const filepath = path.resolve(snapshot.filepath);
+        const relative = path.relative(root, filepath);
+        if (!relative || relative.startsWith(`..${path.sep}`) || relative === ".." || path.isAbsolute(relative)) return null;
+
+        try {
+            await fs.access(filepath);
+            return snapshot;
+        } catch {
+            return null;
+        }
 };
 
 export async function saverepository(fullname, owner, repo) {

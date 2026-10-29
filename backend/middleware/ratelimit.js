@@ -65,3 +65,13 @@ export const analyzelimiter = rateLimit({
   keyGenerator: (req) => (req.user?.id ? `user:${req.user.id}` : ipKeyGenerator(req.ip)),
   message: { error: "Too many analysis requests, please wait a few minutes and try again" },
 });
+
+// Explanation requests may call a paid inference provider; keep usage bounded per account.
+export const explanationlimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: Number(process.env.EXPLANATION_RATE_LIMIT) || 120,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  keyGenerator: (req) => (req.user?.id ? `user:${req.user.id}` : ipKeyGenerator(req.ip)),
+  message: { error: "Too many explanation requests. Please wait before trying again." },
+});
