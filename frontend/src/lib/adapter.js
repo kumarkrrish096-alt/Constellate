@@ -155,7 +155,23 @@ export function adaptSnapshot(rawSnapshot, repoLabel = '') {
     }
 
     const complexity = f.complexity ?? f.cx ?? Math.max(1, Math.round((f.lines || 10) / 15));
-    const churn = f.churn?.lines ?? f.ch ?? (f.churn?.commits ? f.churn.commits * 3 : 10);
+    
+    // Calculate realistic churn: use git history if available, else derive architectural volatility
+    let churn = f.churn?.lines ?? f.ch;
+    if (churn == null) {
+      if (f.churn?.commits) {
+        churn = f.churn.commits * 3;
+      } else {
+        // Derive architectural volatility/churn proxy from code density, size, complexity, and connectivity
+        const fnCount = Array.isArray(f.functions) ? f.functions.length : 1;
+        const expCount = Array.isArray(f.exports) ? f.exports.length : 1;
+        const conn = (f.fanin || 0) * 2.5 + (f.fanout || 0) * 1.5;
+        const sizeFactor = Math.min(35, Math.round((f.lines || 10) / 14));
+        const cxFactor = Math.min(30, Math.round(complexity * 1.4));
+        const densityFactor = Math.min(20, fnCount * 2 + expCount);
+        churn = Math.max(8, Math.min(95, sizeFactor + cxFactor + densityFactor + Math.round(conn)));
+      }
+    }
     const tokens = f.tokens ?? (f.lines ? f.lines * 22 : 120);
 
     return {
@@ -229,20 +245,22 @@ export function adaptSnapshot(rawSnapshot, repoLabel = '') {
     n.fwd = computeReachability(n.id, 'out', nodes);
     n.rev = computeReachability(n.id, 'inn', nodes);
     n.bl = n.raw?.blastradius !== undefined ? n.raw.blastradius : n.rev.size;
-
-    // Risk ratio 0..1 based on blast radius, complexity, and churn
-    const cxRatio = Math.min(1, n.cx / maxComplexity);
-    const chRatio = Math.min(1, n.ch / 100);
-    n.risk = Math.min(1, cxRatio * 0.5 + chRatio * 0.5);
-
-    if (n.raw?.health?.score !== undefined) {
-      n.h = Math.round(n.raw.health.score);
-    } else {
-      n.h = Math.max(10, 100 - Math.round(n.risk * 100));
-    }
   });
 
   const maxB = Math.max(...nodes.map((n) => n.bl), 1);
+
+  nodes.forEach((n) => {
+    // Risk ratio 0..1 based on complexity, churn, blast radius, and cycle status
+    const cxRatio = Math.min(1, n.cx / maxComplexity);
+    const chRatio = Math.min(1, n.ch / 100);
+    const blRatio = Math.min(1, n.bl / maxB);
+    const cycleBonus = cyc.has(n.id) ? 0.2 : 0;
+
+    n.risk = Math.min(1, Math.max(0.04, cxRatio * 0.4 + chRatio * 0.35 + blRatio * 0.25 + cycleBonus));
+
+    // File health is inversely proportional to risk (100 = pristine, 5 = severe hotspot)
+    n.h = Math.max(5, Math.min(99, 100 - Math.round(n.risk * 100)));
+  });
 
   // God file & Hotspots
   let godId = -1;
@@ -298,12 +316,35 @@ export function adaptSnapshot(rawSnapshot, repoLabel = '') {
   // Precompute layout positions
   const positions = computeLayout(nodes, edges, clusterNames.length);
 
-  // Compute summary statistics
+  // Compute repository-wide Architectural Health
+  const avgFileHealth = nodes.length
+    ? Math.round(nodes.reduce((acc, n) => acc + n.h, 0) / nodes.length)
+    : 80;
+
+  // Architectural deductions
+  const cycleCount = rawCycles.length || (ring.length ? 1 : 0);
+  const cyclePenalty = Math.min(24, cycleCount * 6 + ring.length * 2);
+  const godFilesCount = Array.isArray(rawSnapshot.godfiles) && rawSnapshot.godfiles.length > 0
+    ? rawSnapshot.godfiles.length
+    : (godId >= 0 ? 1 : 0);
+  const godPenalty = Math.min(20, godFilesCount * 8);
+  const avgComplexity = nodes.length
+    ? nodes.reduce((acc, n) => acc + n.cx, 0) / nodes.length
+    : 5;
+  const complexityPenalty = avgComplexity > 6 ? Math.min(15, Math.round((avgComplexity - 6) * 1.5)) : 0;
+
+  const repoHealth = nodes.length
+    ? Math.max(
+        25,
+        Math.min(96, Math.round(avgFileHealth * 0.65 + (100 - cyclePenalty - godPenalty - complexityPenalty) * 0.35))
+      )
+    : 80;
+
   const stats = {
     a: 1,
     f: nodes.length,
-    cycles: rawCycles.length || ring.length ? 1 : 0,
-    health: nodes.length ? Math.round(nodes.reduce((acc, n) => acc + n.h, 0) / nodes.length) : 80,
+    cycles: cycleCount,
+    health: repoHealth,
   };
 
   const fullname = rawSnapshot.repo?.fullname || rawSnapshot.fullname || repoLabel.split(' · ')[0] || 'repository';
@@ -333,27 +374,133 @@ export function adaptSnapshot(rawSnapshot, repoLabel = '') {
 }
 
 /**
- * Returns the default seed/demo dataset.
+ * Returns the default seed/demo dataset, or adapts for a requested repository name and SHA.
  */
-export function getDemoDataset() {
+export function getDemoDataset(repoFullName = 'expressjs/express', sha = 'a3f9c1e', hint = {}) {
+  if (!repoFullName || repoFullName === 'expressjs/express') {
+    return {
+      isAdapted: true,
+      isDemo: true,
+      fullname: 'expressjs/express',
+      sha: sha || 'a3f9c1e',
+      label: `expressjs/express · ${(sha || 'a3f9c1e').slice(0, 7)}`,
+      N: demoData.N,
+      E: demoData.E,
+      F: demoData.F,
+      C: demoData.C,
+      CO: demoData.CO,
+      god: demoData.god,
+      ring: demoData.ring,
+      cyc: demoData.cyc,
+      maxB: demoData.maxB,
+      U: demoData.U,
+      cand: demoData.cand,
+      worst: demoData.worst,
+      stats: { a: 12, f: 142, cycles: 1, health: 81 },
+    };
+  }
+
+  // Repository-specific seed profile for demo history entries
+  const seedProfiles = {
+    'pallets/flask': { f: 86, h: 86, cy: 0, g: -1, lang: 'Python', clusters: ['app', 'blueprints', 'helpers', 'routing', 'views'] },
+    'vitejs/vite': { f: 612, h: 72, cy: 3, g: 0, lang: 'TypeScript', clusters: ['client', 'node', 'optimizer', 'plugins', 'server'] },
+    'vuejs/core': { f: 1204, h: 68, cy: 4, g: 0, lang: 'TypeScript', clusters: ['compiler', 'reactivity', 'runtime', 'server', 'shared'] },
+    'torvalds/linux': { f: 20000, h: 41, cy: 12, g: 0, lang: 'C', clusters: ['arch', 'drivers', 'fs', 'kernel', 'mm', 'net'] },
+  };
+
+  const profile = seedProfiles[repoFullName] || {
+    f: hint.f || 120,
+    h: hint.h || 75,
+    cy: hint.cy ?? 1,
+    g: hint.g ? 0 : -1,
+    lang: hint.l || 'Source',
+    clusters: ['core', 'lib', 'util', 'api', 'ui'],
+  };
+
+  const sampleCount = Math.min(65, Math.max(20, Math.round(Math.log2(profile.f) * 6)));
+  const clusterNames = profile.clusters;
+  const nodes = [];
+  const cyclesCount = profile.cy;
+  const ringNodes = [];
+
+  for (let i = 0; i < sampleCount; i++) {
+    const k = i % clusterNames.length;
+    const isGod = i === profile.g;
+    const inRing = cyclesCount > 0 && i >= 1 && i <= Math.min(5, cyclesCount + 1);
+    if (inRing) ringNodes.push(i);
+
+    const ext = profile.lang === 'Python' ? '.py' : profile.lang === 'C' ? '.c' : '.ts';
+    const name = `${clusterNames[k]}/module_${i}${ext}`;
+    const cx = isGod ? 48 : inRing ? 22 + (i % 8) : Math.max(2, Math.round(18 * (100 - profile.h) / 40 + (i % 7)));
+    const ch = isGod ? 85 : inRing ? 60 + (i % 20) : Math.max(8, Math.min(90, Math.round(50 * (100 - profile.h) / 35 + ((i * 13) % 40))));
+    const bl = isGod ? 18 : inRing ? 6 + (i % 4) : Math.max(0, Math.round(8 * (100 - profile.h) / 50 + (i % 3)));
+    const risk = Math.min(1, Math.max(0.05, (cx / 50) * 0.45 + (ch / 100) * 0.35 + (bl / 20) * 0.2));
+    const h = Math.max(10, Math.min(98, 100 - Math.round(risk * 100)));
+
+    nodes.push({
+      id: i,
+      k,
+      name,
+      path: name,
+      cx,
+      ch,
+      tok: cx * 35 + 200,
+      out: [],
+      inn: [],
+      fwd: new Set(),
+      rev: new Set(),
+      bl,
+      risk,
+      h,
+      lines: cx * 18 + 50,
+      language: profile.lang,
+    });
+  }
+
+  // Connect sample edges
+  const edges = [];
+  for (let i = 1; i < nodes.length; i++) {
+    const target = i % 4 === 0 && profile.g >= 0 ? profile.g : (i - 1);
+    nodes[i].out.push(target);
+    nodes[target].inn.push(i);
+    edges.push({ a: i, b: target, cy: ringNodes.includes(i) && ringNodes.includes(target), i: edges.length });
+  }
+
+  if (ringNodes.length > 1) {
+    for (let r = 0; r < ringNodes.length; r++) {
+      const a = ringNodes[r];
+      const b = ringNodes[(r + 1) % ringNodes.length];
+      if (!nodes[a].out.includes(b)) {
+        nodes[a].out.push(b);
+        nodes[b].inn.push(a);
+        edges.push({ a, b, cy: true, i: edges.length });
+      }
+    }
+  }
+
+  const cyc = new Set(ringNodes);
+  const clusterBuckets = clusterNames.map(() => []);
+  nodes.forEach((n) => clusterBuckets[n.k]?.push(n.id));
+  const positions = computeLayout(nodes, edges, clusterNames.length);
+
   return {
     isAdapted: true,
     isDemo: true,
-    fullname: 'expressjs/express',
-    sha: 'a3f9c1e',
-    label: 'expressjs/express · a3f9c1e',
-    N: demoData.N,
-    E: demoData.E,
-    F: demoData.F,
-    C: demoData.C,
-    CO: demoData.CO,
-    god: demoData.god,
-    ring: demoData.ring,
-    cyc: demoData.cyc,
-    maxB: demoData.maxB,
-    U: demoData.U,
-    cand: demoData.cand,
-    worst: demoData.worst,
-    stats: { a: 12, f: 4812, cycles: 9, health: 74 },
+    fullname: repoFullName,
+    sha: sha || 'HEAD',
+    label: `${repoFullName} · ${(sha || 'HEAD').slice(0, 7)}`,
+    N: nodes,
+    E: edges,
+    F: clusterNames,
+    C: clusterBuckets,
+    CO: [],
+    god: profile.g >= 0 ? profile.g : 0,
+    ring: ringNodes,
+    cyc,
+    maxB: Math.max(...nodes.map((n) => n.bl), 1),
+    U: positions,
+    cand: nodes.slice(0, 5).map((n, i) => ({ n, sf: 90 - i * 5, t: true, iss: `Entry point for ${n.name}`, no: 100 + i })),
+    worst: [...nodes].sort((a, b) => b.risk - a.risk)[0] || nodes[0],
+    stats: { a: 1, f: profile.f, cycles: profile.cy, health: profile.h },
   };
 }

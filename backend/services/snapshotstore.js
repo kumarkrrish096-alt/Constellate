@@ -32,7 +32,7 @@ export async function writesnapshotfile(fullname, sha, version, data) {
     throw error;
   }
 
-  return { filepath: finalpath, sizebytes: body.length };
+  return { filepath: finalpath, sizebytes: body.length, data: body };
 }
 
 /**
@@ -40,11 +40,17 @@ export async function writesnapshotfile(fullname, sha, version, data) {
  * the same commit always produces the same snapshot: a retried or duplicated
  * job just overwrites the record with identical data.
  */
-export async function savesnapshotrecord({ fullname, sha, version, filepath, sizebytes }) {
+export async function savesnapshotrecord({ fullname, sha, version, filepath, sizebytes, data }) {
   await Snapshot.updateOne(
     { fullname, sha },
     {
-      $set: { filepath, version, sizebytes, createdat: new Date() },
+      $set: {
+        filepath,
+        version,
+        sizebytes,
+        ...(data ? { data } : {}),
+        createdat: new Date(),
+      },
     },
     { upsert: true }
   );

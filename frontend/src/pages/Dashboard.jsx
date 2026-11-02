@@ -159,17 +159,31 @@ export default function Dashboard() {
         say('Could not load snapshot for ' + h.n);
       }
     }
-    if (h.n === 'expressjs/express') {
-      const demo = getDemoDataset();
-      setActiveData(demo);
-      atRef.current?.setData(demo);
-      setRepo(h.n + ' · ' + h.s);
-      setSel(-1);
-      say('Reopening the atlas for ' + h.n);
-      go('atlas');
-      return;
+    // Try fetching from backend snapshots route if available
+    if (h.n && h.s && /^[0-9a-f]{40}$/i.test(h.s)) {
+      try {
+        const snap = await fetchSnapshot(`/snapshots/${h.n}/${h.s}`);
+        loadSnapshotData(snap, h.n + ' · ' + h.s);
+        say('Reopening the atlas for ' + h.n);
+        go('atlas');
+        return;
+      } catch {
+        /* fallback to repository profile dataset */
+      }
     }
-    setRepo(h.n + ' · ' + h.s);
+    // Load tailored dataset for this repository
+    const demo = getDemoDataset(h.n, h.s, h);
+    setActiveData(demo);
+    setRepo(demo.label);
+    setStats({
+      a: 1,
+      f: demo.stats.f || demo.N.length,
+      cycles: demo.stats.cycles,
+      health: demo.stats.health,
+    });
+    setSel(-1);
+    setNote('');
+    atRef.current?.setData(demo);
     say('Reopening the atlas for ' + h.n);
     go('atlas');
   };

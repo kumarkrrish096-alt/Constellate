@@ -118,92 +118,103 @@ export default function CodePanel({ i, data, repository: propRepo }) {
   const currentSource = sourceState?.path === path ? sourceState : null;
 
   return (
-    <>
-      <div className="kv">
-        <span>lines <b>{file?.lines ?? node.lines ?? 'unknown'}</b></span>
-        <span>complexity <b>{file?.complexity ?? node.cx ?? 'unknown'}</b></span>
-        <span>tokens <b>{(file?.tokens ?? node.tok ?? 0).toLocaleString()}</b></span>
-        <span>health <b>{file?.health?.score ?? node.h ?? 'unknown'}</b></span>
-        <span>blast <b>{file?.blastradius ?? node.bl ?? 'unknown'}</b></span>
-      </div>
-
-      <div className="mono">Imports</div>
-      <div className="imps">
-        {imports.length > 0 ? (
-          imports.map(({ file: dep, edge }) => (
-            <button className="chip" key={dep.id} onClick={() => selectPath(dep.path)}>
-              {dep.path} · {edge.kinds?.join(', ') || 'import'}
-            </button>
-          ))
-        ) : node.out && node.out.length > 0 ? (
-          node.out.map((j) => <Chip key={j} j={j} />)
-        ) : (
-          <span className="mono">none (root or leaf)</span>
-        )}
-      </div>
-
-      <div className="mono">Imported by {(importers.length || (node.inn || []).length)} · reaches {file?.blastradius ?? node.bl ?? 0} files</div>
-      {importers.length > 0 && (
-        <div className="imps">
-          {importers.map(({ file: imp, edge }) => (
-            <button className="chip" key={imp.id} onClick={() => selectPath(imp.path)}>
-              {imp.path} · line {edge.lines?.join(', ') || 'unknown'}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {cochange.length > 0 && (
-        <>
-          <div className="mono">Changed together</div>
-          <div className="imps">
-            {cochange.map((pair) => {
-              const id = pair.a === file.id ? pair.b : pair.a;
-              const partner = snapshot?.files?.[id];
-              return partner ? (
-                <button className="chip" key={id} onClick={() => selectPath(partner.path)}>
-                  {partner.path} · {pair.count} commits
-                </button>
-              ) : null;
-            })}
+    <div className="code-ai-half-grid">
+      {/* Left Column (50%): Code Panel showing code directly */}
+      <div className="code-half-pane">
+        <div className="code-pane-header">
+          <div className="mono code-source-header">
+            Source · {repository ? `${repository.fullname}@${repository.sha.slice(0, 7)} · ${path}` : path}
           </div>
-        </>
-      )}
+        </div>
 
-      {co.length > 0 && cochange.length === 0 && (
-        <>
-          <div className="mono">Edited together with</div>
+        <div className="kv">
+          <span>lines <b>{file?.lines ?? node.lines ?? 'unknown'}</b></span>
+          <span>complexity <b>{file?.complexity ?? node.cx ?? 'unknown'}</b></span>
+          <span>tokens <b>{(file?.tokens ?? node.tok ?? 0).toLocaleString()}</b></span>
+          <span>health <b>{node.h ?? (file?.health?.score != null ? Math.max(5, 100 - file.health.score) : 'unknown')}</b></span>
+          <span>blast <b>{file?.blastradius ?? node.bl ?? 'unknown'}</b></span>
+        </div>
+
+        {/* Imports & relationships at the top */}
+        <div className="mono">Imports ({imports.length || (node.out || []).length})</div>
+        <div className="imps">
+          {imports.length > 0 ? (
+            imports.map(({ file: dep, edge }) => (
+              <button className="chip" key={dep.id} onClick={() => selectPath(dep.path)}>
+                {dep.path} · {edge.kinds?.join(', ') || 'import'}
+              </button>
+            ))
+          ) : node.out && node.out.length > 0 ? (
+            node.out.map((j) => <Chip key={j} j={j} />)
+          ) : (
+            <span className="mono">none (root or leaf)</span>
+          )}
+        </div>
+
+        <div className="mono">Imported by {(importers.length || (node.inn || []).length)} · reaches {file?.blastradius ?? node.bl ?? 0} files</div>
+        {importers.length > 0 && (
           <div className="imps">
-            {co.map((c) => (
-              <Chip key={c.j} j={c.j} extra={' · ' + c.w} />
+            {importers.map(({ file: imp, edge }) => (
+              <button className="chip" key={imp.id} onClick={() => selectPath(imp.path)}>
+                {imp.path} · line {edge.lines?.join(', ') || 'unknown'}
+              </button>
             ))}
           </div>
-        </>
-      )}
+        )}
 
-      {repository && file && (
-        <AIExplanationPanel
-          key={`${repository.sha}:${path}`}
-          repository={repository}
-          file={file}
-          onJumpToLine={jumpToLine}
-        />
-      )}
-
-      <div className="mono">Source · {repository ? `${repository.fullname}@${repository.sha.slice(0, 7)} · ${path}` : path}</div>
-
-      {currentSource?.status === 'ready' ? (
-        <div className="code" ref={sourceRef}>
-          {currentSource.source.split('\n').map((line, index) => (
-            <div key={index} data-line={index + 1}>
-              <i>{index + 1}</i>
-              <span>{line || ' '}</span>
+        {cochange.length > 0 && (
+          <>
+            <div className="mono">Changed together</div>
+            <div className="imps">
+              {cochange.map((pair) => {
+                const id = pair.a === file.id ? pair.b : pair.a;
+                const partner = snapshot?.files?.[id];
+                return partner ? (
+                  <button className="chip" key={id} onClick={() => selectPath(partner.path)}>
+                    {partner.path} · {pair.count} commits
+                  </button>
+                ) : null;
+              })}
             </div>
-          ))}
-        </div>
-      ) : currentSource?.status === 'error' ? (
-        <>
-          <p className="err" role="alert">{currentSource.message}</p>
+          </>
+        )}
+
+        {co.length > 0 && cochange.length === 0 && (
+          <>
+            <div className="mono">Edited together with</div>
+            <div className="imps">
+              {co.map((c) => (
+                <Chip key={c.j} j={c.j} extra={' · ' + c.w} />
+              ))}
+            </div>
+          </>
+        )}
+
+        {currentSource?.status === 'ready' ? (
+          <div className="code" ref={sourceRef}>
+            {currentSource.source.split('\n').map((line, index) => (
+              <div key={index} data-line={index + 1}>
+                <i>{index + 1}</i>
+                <span>{line || ' '}</span>
+              </div>
+            ))}
+          </div>
+        ) : currentSource?.status === 'error' ? (
+          <>
+            <p className="err" role="alert">{currentSource.message}</p>
+            <div className="code">
+              {L.map((l, k) => (
+                <div key={i + '-' + k} className={l.cy ? 'cy' : ''} style={{ animationDelay: k * 50 + 'ms' }}>
+                  <i>{k + 1}</i>
+                  <span>
+                    <span dangerouslySetInnerHTML={{ __html: hl(l.t) }} />
+                    {l.cy && <span className="cyt">circular import</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
           <div className="code">
             {L.map((l, k) => (
               <div key={i + '-' + k} className={l.cy ? 'cy' : ''} style={{ animationDelay: k * 50 + 'ms' }}>
@@ -215,20 +226,24 @@ export default function CodePanel({ i, data, repository: propRepo }) {
               </div>
             ))}
           </div>
-        </>
-      ) : (
-        <div className="code">
-          {L.map((l, k) => (
-            <div key={i + '-' + k} className={l.cy ? 'cy' : ''} style={{ animationDelay: k * 50 + 'ms' }}>
-              <i>{k + 1}</i>
-              <span>
-                <span dangerouslySetInnerHTML={{ __html: hl(l.t) }} />
-                {l.cy && <span className="cyt">circular import</span>}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </>
+        )}
+      </div>
+
+      {/* Right Column (50%): AI Explain System */}
+      <div className="ai-half-pane">
+        {repository && file ? (
+          <AIExplanationPanel
+            key={`${repository.sha}:${path}`}
+            repository={repository}
+            file={file}
+            onJumpToLine={jumpToLine}
+          />
+        ) : (
+          <div className="ai-empty-notice">
+            <span className="mono">Select a file in the snapshot above to use AI explanation</span>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

@@ -26,9 +26,9 @@ process.once("message", async (message) => {
     const report = (stage, progress) => send({ type: "progress", stage, progress });
 
     const data = await runanalysis({ fullname, sha, branch }, report);
-    const { filepath, sizebytes } = await writesnapshotfile(fullname, sha, data.version, data);
+    const { filepath, sizebytes, data: compressedData } = await writesnapshotfile(fullname, sha, data.version, data);
 
-    await send({ type: "result", filepath, sizebytes, version: data.version });
+    await send({ type: "result", filepath, sizebytes, version: data.version, data: compressedData });
     process.exit(0);
   } catch (error) {
     await send({

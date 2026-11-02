@@ -246,10 +246,17 @@ export default function AtlasView() {
             )}
           </div>
         </div>
-        <div className="card rise" style={{ '--i': 2 }}>
+        <div className="card rise code-ai-bottom-card" style={{ '--i': 2 }}>
           <div className="ct">
-            <h3>Code panel</h3>
-            <span className="mono">{sel >= 0 && N[sel] ? N[sel].name : note || 'no file selected'}</span>
+            <div className="row" style={{ gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <h3>Code & AI Explanation</h3>
+              <span className="mono">{sel >= 0 && N[sel] ? N[sel].name : note || 'no file selected'}</span>
+            </div>
+            {repository && (
+              <span className="mono" style={{ color: 'var(--mute)' }}>
+                {repository.fullname}@{repository.sha.slice(0, 7)}
+              </span>
+            )}
           </div>
           <div className="pnl">
             <CodePanel i={sel} data={currentData} repository={repository} />

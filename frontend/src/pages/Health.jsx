@@ -13,12 +13,16 @@ export default function Health() {
   const ring = activeData?.ring || defRing;
   const cyc = activeData?.cyc || defCyc;
 
-  const maxComplexity = Math.max(50, ...N.map((n) => n.cx || 0));
-  const X = (c) => m.l + (c / maxComplexity) * (W - m.l - m.r);
-  const Y = (c) => H - m.b - (c / 100) * (H - m.t - m.b);
+  const maxComplexity = Math.max(20, ...N.map((n) => n.cx || 0));
+  const maxChurn = Math.max(40, ...N.map((n) => n.ch || 0));
+  const X = (c) => m.l + (Math.min(c, maxComplexity) / maxComplexity) * (W - m.l - m.r);
+  const Y = (c) => H - m.b - (Math.min(c, maxChurn) / maxChurn) * (H - m.t - m.b);
 
   const hot = [...N].sort((a, b) => (b.risk || 0) - (a.risk || 0)).slice(0, 5);
   const dots = [...N].sort((a, b) => (a.bl || 0) - (b.bl || 0));
+
+  const healthScore = activeData?.stats?.health ?? 80;
+  const healthColor = healthScore >= 75 ? 'var(--gold)' : healthScore >= 50 ? 'var(--ttl)' : 'var(--hot)';
 
   return (
     <section className={'view' + (view === 'health' ? ' on' : '')} id="v-health">
@@ -28,9 +32,25 @@ export default function Health() {
           <h1 className="h1">Architectural health</h1>
           <p className="sub">The top right is where files break.</p>
         </div>
-        <button onClick={showHeat}>
-          <Icon n="flame" /> Heatmap in atlas
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            padding: '6px 14px',
+            background: 'var(--card-bg, rgba(255,255,255,0.03))',
+            border: '1px solid var(--line)',
+            borderRadius: 8,
+          }}>
+            <span style={{ fontSize: '1.4rem', fontWeight: 700, color: healthColor, lineHeight: 1.1 }}>
+              {healthScore}%
+            </span>
+            <span className="mono" style={{ fontSize: '0.68rem', opacity: 0.8 }}>Health Score</span>
+          </div>
+          <button onClick={showHeat}>
+            <Icon n="flame" /> Heatmap in atlas
+          </button>
+        </div>
       </div>
       <div className="card rise" style={{ '--i': 1 }}>
         <div className="ct">
@@ -41,16 +61,16 @@ export default function Health() {
           <svg className="sc" viewBox={`0 0 ${W} ${H}`} onPointerLeave={unhold}>
             <rect
               x={X(Math.round(maxComplexity * 0.45))}
-              y={Y(100)}
+              y={Y(maxChurn)}
               width={X(maxComplexity) - X(Math.round(maxComplexity * 0.45))}
-              height={Y(52) - Y(100)}
+              height={Math.max(10, Y(Math.round(maxChurn * 0.52)) - Y(maxChurn))}
               fill="var(--hot)"
               opacity=".1"
               stroke="var(--hot)"
               strokeDasharray="4 4"
               strokeOpacity=".6"
             />
-            <text x={X(Math.round(maxComplexity * 0.46))} y={Y(97)} style={{ fill: 'var(--hot)' }}>
+            <text x={X(Math.round(maxComplexity * 0.46))} y={Y(Math.round(maxChurn * 0.95))} style={{ fill: 'var(--hot)' }}>
               fragile zone
             </text>
             <line x1={m.l} y1={H - m.b} x2={W - m.r} y2={H - m.b} stroke="var(--line)" />

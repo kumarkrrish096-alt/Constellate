@@ -163,6 +163,7 @@ async function processjob(job) {
         version: outcome.version,
         filepath: outcome.filepath,
         sizebytes: outcome.sizebytes,
+        data: outcome.data,
       });
       await completejob(job._id, WORKER_ID);
       log(`finished ${label}`);

@@ -29,6 +29,11 @@ const snapshotschema=new mongoose.Schema(
             type:Number,
             default:0
         },
+        // compressed gzip snapshot payload for multi-machine persistence
+        data:
+        {
+            type:Buffer
+        },
         createdat:
         {
             type:Date,

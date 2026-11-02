@@ -23,6 +23,7 @@ export function snapshotAtlas(snapshot) {
 
   const maxComplexity = Math.max(1, ...files.map(file => file.complexity || 0))
   const maxChurn = Math.max(1, ...files.map(file => file.churn?.lines || 0))
+  const maxBlast = Math.max(1, ...files.map(file => file.blastradius || 0))
   const nodes = files.map((file, id) => {
     const cluster = Number.isInteger(file.cluster) && names[file.cluster] ? file.cluster : 0
     const node = {

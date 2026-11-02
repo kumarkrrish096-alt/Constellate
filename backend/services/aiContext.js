@@ -183,14 +183,34 @@ export async function buildexplanationcontextforpreparedrequest(prepared, { fetc
 }
 
 async function readsnapshot(record, identity) {
-  const target = path.resolve(record.filepath);
-  const root = path.resolve(SNAPSHOT_DIR) + path.sep;
-  if (!target.startsWith(root) || path.basename(target) !== path.basename(record.filepath)) {
+  const filename = path.basename(record.filepath || "");
+  const localpath = path.join(SNAPSHOT_DIR, filename);
+
+  let compressed = null;
+  try {
+    compressed = await fs.readFile(localpath);
+  } catch {
+    if (record.data) {
+      compressed = record.data;
+      try {
+        await fs.mkdir(SNAPSHOT_DIR, { recursive: true });
+        await fs.writeFile(localpath, record.data);
+      } catch {
+        // Caching error is harmless; memory buffer is used
+      }
+    }
+  }
+
+  if (!compressed) {
+    const target = path.resolve(record.filepath || "");
+    const root = path.resolve(SNAPSHOT_DIR) + path.sep;
+    if (!target.startsWith(root) || path.basename(target) !== filename) {
+      throw new AIExplanationError("snapshot_unavailable", "The analyzed snapshot is unavailable.", 503);
+    }
     throw new AIExplanationError("snapshot_unavailable", "The analyzed snapshot is unavailable.", 503);
   }
 
   try {
-    const compressed = await fs.readFile(target);
     const raw = await gunzip(compressed);
     const snapshot = JSON.parse(raw.toString("utf8"));
     if (snapshot.repo?.fullname?.toLowerCase() !== identity.fullname || snapshot.repo?.sha?.toLowerCase() !== identity.sha) {
