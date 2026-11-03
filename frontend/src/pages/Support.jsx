@@ -83,30 +83,15 @@ function Report() {
   )
 }
 
-// Team members are sourced from env vars (VITE_TEAM_MEMBERS as JSON array of {initials,name,branch,reg}).
-// Falls back to a generic message if not configured.
-function getTeamMembers() {
-  try {
-    const raw = import.meta.env.VITE_TEAM_MEMBERS;
-    if (raw) return JSON.parse(raw);
-  } catch { /* ignore parse errors */ }
-  return null;
-}
-
-const TEAM_HEADING = import.meta.env.VITE_TEAM_HEADING || 'The Team';
-const TEAM_DESCRIPTION = import.meta.env.VITE_TEAM_DESCRIPTION || 'Constellate is an open-source architectural analysis tool.';
-
+const TEAM = [['KR', 'Krrish', 'ECE', '20244098'], ['KB', 'Krish Bhalotia', 'ECE', '20244095'], ['SJ', 'Sujal Jain', 'ECM', '20248025']]
 function Contact() {
-  const members = getTeamMembers();
   return (
     <section className="on">
-      <div className="kick">{TEAM_HEADING}</div><h1 className="h1">Contact the Team</h1>
-      <p className="sub">{TEAM_DESCRIPTION}</p>
-      {members && members.length > 0 && (
-        <div className="tm">{members.map((m) => <div key={m.initials} className="card"><span className="avc" aria-hidden="true">{m.initials}</span><h3>{m.name}</h3>{m.branch && <span className="br">{m.branch}</span>}{m.reg && <span className="rg2">Reg. no. {m.reg}</span>}</div>)}</div>
-      )}
+      <div className="kick">Webster 2026 · Team 145</div><h1 className="h1">Contact the Team</h1>
+      <p className="sub">Constellate is built by three students for Problem Statement 06, The Astral Cartographer.</p>
+      <div className="tm">{TEAM.map(([i, n, b, r]) => <div key={i} className="card"><span className="avc" aria-hidden="true">{i}</span><h3>{n}</h3><span className="br">{b}</span><span className="rg2">Reg. no. {r}</span></div>)}</div>
       <div className="card"><p style={{ margin: 0 }}>
-        {SUPPORT.teamEmail ? <><span>Email the team at </span><a className="lnk" href={'mailto:' + SUPPORT.teamEmail}>{SUPPORT.teamEmail}</a>. </> : 'Public contact details have not been published for the team yet. '}
+        {SUPPORT.teamEmail ? <>Email the team at <a className="lnk" href={'mailto:' + SUPPORT.teamEmail}>{SUPPORT.teamEmail}</a>. </> : 'Public contact details have not been published for the team yet. '}
         For a bug, use <Link className="lnk" to="/support/report">Report an Issue</Link> and for how-to questions see the <Link className="lnk" to="/support/help">Help Center</Link>.
       </p></div>
     </section>

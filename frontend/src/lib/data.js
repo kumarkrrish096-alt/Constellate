@@ -29,6 +29,12 @@ N.forEach((n,i)=>{const u=U[i];u.vx+=(Cc[n.k][0]-u.x)*.03;u.vy+=(Cc[n.k][1]-u.y)
 const issues=['Add missing JSDoc to exported helpers','Rename unclear variable in config loader','Fix typo in error message','Add unit test for edge case','Improve log message formatting','Replace deprecated call','Document the env variables','Tidy unused imports'];
 const cand=N.filter(n=>n.id!==god&&!cyc.has(n.id)&&n.inn.length>0).map(n=>({n,sf:100-Math.round((n.bl/maxB*.45+n.cx/58*.3+n.ch/100*.25)*100),t:R()>.45})).sort((a,b)=>b.sf-a.sf).slice(0,8).map((c,i)=>({...c,iss:issues[i],no:1200+Math.floor(R()*700)}));
 const worst=N.slice().sort((a,b)=>b.risk-a.risk)[0];
-// Users start with an empty history; entries are added by real casts.
-const seedH=()=>[];
+const seedH=()=>{const H=3600e3,D=24*H,n=Date.now();return[
+{id:1,n:'expressjs/express',s:'a3f9c1e',l:'JavaScript',f:142,h:81,cy:1,g:1,st:'cached',ms:240,at:n-2*H},
+{id:2,n:'vitejs/vite',s:'91d4e07',l:'TypeScript',f:612,h:72,cy:3,g:2,st:'cast',ms:4180,at:n-5*H},
+{id:3,n:'vuejs/core',s:'7be21d0',l:'TypeScript',f:1204,h:68,cy:4,g:3,st:'cast',ms:4890,at:n-26*H},
+{id:4,n:'facebook/react',s:'',l:'JavaScript',f:0,h:0,cy:0,g:0,st:'fizzled',ms:0,at:n-30*H,note:'GitHub rate limit reached. The job waits in the queue and retries after the reset.'},
+{id:5,n:'pallets/flask',s:'c04d8aa',l:'Python',f:86,h:86,cy:0,g:0,st:'cast',ms:1260,at:n-3*D},
+{id:6,n:'torvalds/linux',s:'e1f07bb',l:'C',f:20000,h:41,cy:12,g:6,st:'partial',ms:88000,at:n-4*D,note:'The 20,000 file cap was reached. Three top-level packages were skipped.'},
+{id:7,n:'vuejs/core',s:'2c8a5f1',l:'TypeScript',f:1181,h:66,cy:5,g:3,st:'cast',ms:4720,at:n-9*D}]};
 export {rng,R,F,N,E,C,CO,god,ring,cyc,maxB,PAL,U,issues,cand,worst,seedH}

@@ -8,7 +8,7 @@ import { publicUser, revokeAllUserSessions } from "./session.js";
 // as "wrong password" and response timing does not reveal registered emails.
 const dummyHash = bcrypt.hash("constellate-timing-equaliser", BCRYPT_ROUNDS);
 
-const RESET_TOKEN_TTL_MS = (Number(process.env.RESET_TOKEN_TTL_MINUTES) || 60) * 60 * 1000;
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 
 export function authError(status, message, code) {
   const error = new Error(message);

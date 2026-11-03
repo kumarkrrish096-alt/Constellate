@@ -6,7 +6,7 @@ const Ctx = createContext(null);
 
 export const initials = (n) => {
   const w = String(n || '').trim().split(/\s+/).filter(Boolean);
-  return (w.length > 1 ? w[0][0] + w[1][0] : (w[0] || 'U').slice(0, 2)).toUpperCase();
+  return (w.length > 1 ? w[0][0] + w[1][0] : (w[0] || 'K').slice(0, 2)).toUpperCase();
 };
 
 export function AuthProvider({ children }) {

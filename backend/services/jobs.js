@@ -12,7 +12,7 @@ import { snapshotfilename } from "./snapshotstore.js";
 
 // a failed job may be retried by a new request only after this long,
 // so a repo that always fails cannot keep the workers busy
-const RETRY_FAILED_AFTER_MS = (Number(process.env.RETRY_FAILED_AFTER_MINUTES) || 10) * 60 * 1000;
+const RETRY_FAILED_AFTER_MS = 10 * 60 * 1000;
 
 // only snapshots made by the current analysis count; older ones get re-analysed
 export async function findsnapshot(fullname, sha) {

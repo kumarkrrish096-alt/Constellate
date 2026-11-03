@@ -3,7 +3,6 @@ import { z } from "zod";
 
 import { findsnapshot, saverepository, createorgetjob, jobview, snapshoturl } from "../services/jobs.js";
 import { getlatestcommit } from "../services/github.js";
-import Submission from "../models/submission.js";
 
 const router = Router();
 const githuburlpattern = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(\.git)?\/?$/;
@@ -41,63 +40,23 @@ router.post("/", async (req, res) => {
         const snapshot = await findsnapshot(info.fullname, info.sha);
 
         if (snapshot) {
-          let submissionId = null;
-          if (req.user?.id) {
-            try {
-              const submission = await Submission.findOneAndUpdate(
-                { userid: String(req.user.id), fullname: info.fullname, sha: info.sha },
-                {
-                  $set: {
-                    status: "cached",
-                    createdat: new Date(),
-                  },
-                },
-                { upsert: true, new: true }
-              );
-              submissionId = String(submission._id);
-            } catch (subErr) {
-              console.warn("Could not record user submission:", subErr.message);
-            }
-          }
-
-          return res.json({
+        return res.json({
             status: "ready",
-            submissionId,
             fullname: info.fullname,
             sha: info.sha,
             snapshotUrl: snapshoturl(info.fullname, info.sha),
-          });
+        });
         }
 
         // cache miss: queue a job (or join the one already queued for this commit)
         const { job, created } = await createorgetjob(info.fullname, info.sha, info.branch);
 
-        let submissionId = null;
-        if (req.user?.id && job) {
-          try {
-            const submission = await Submission.findOneAndUpdate(
-              { userid: String(req.user.id), fullname: info.fullname, sha: info.sha },
-              {
-                $set: {
-                  jobid: job._id,
-                  status: "queued",
-                  createdat: new Date(),
-                },
-              },
-              { upsert: true, new: true }
-            );
-            submissionId = String(submission._id);
-          } catch (subErr) {
-            console.warn("Could not record user submission:", subErr.message);
-          }
-        }
-
-        res.status(202).json({
-          ...(await jobview(job)),
-          submissionId,
-          eventsUrl: `/api/jobs/${job._id}/events`,
-          newjob: created,
-        });
+        res.status(202).json(
+            {
+                ...(await jobview(job)),
+                eventsUrl: `/api/jobs/${job._id}/events`,
+                newjob: created,
+            });
    }
   catch (error) {
     if (error.status === 404)

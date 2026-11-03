@@ -3,10 +3,9 @@ import { Link, useNavigate } from 'react-router-dom'
 import Icon from './Icon'
 import { useDash } from './DashContext'
 import { initials, useAuth } from '../auth/AuthContext'
-import { ago } from '../lib/utils'
 
 export default function Topbar() {
-  const { dd, setDd, showPop, say, badge, setBadge, hist, openCast } = useDash()
+  const { dd, setDd, showPop, say, badge, setBadge } = useDash()
   const { user, email, logout } = useAuth(), nav = useNavigate()
   const navEl = useRef(), bell = useRef(), menu = useRef(), [right, setRight] = useState(200)
   const onBell = e => {
@@ -38,23 +37,9 @@ export default function Topbar() {
         <button className="ib" aria-label="Log out" onClick={out}><Icon n="logout" /></button>
       </div>
       <div ref={menu} className={'dd list' + (dd === 'bell' ? ' on' : '')} style={{ top: 'calc(100% + 8px)', right, minWidth: 270 }}>
-        {hist && hist.length > 0 ? (
-          hist
-            .filter((h) => h.st !== 'fizzled')
-            .sort((a, b) => b.at - a.at)
-            .slice(0, 5)
-            .map((h) => (
-              <a key={h.id} style={{ cursor: 'pointer' }} onClick={() => { openCast(h); setDd(null); }}>
-                <Icon n={h.st === 'cached' ? 'check' : 'repeat'} />
-                {h.n}
-                <span className="mn">{ago(h.at)}</span>
-              </a>
-            ))
-        ) : (
-          <div style={{ padding: '12px 16px', opacity: 0.6, fontSize: '0.85em' }}>
-            No analyses yet. Cast your first atlas!
-          </div>
-        )}
+        <a><Icon n="check" />Atlas ready: expressjs/express<span className="mn">2h</span></a>
+        <a><Icon n="repeat" />New cycle in vuejs/core<span className="mn">1d</span></a>
+        <a><Icon n="clock" />GitHub rate limit reset<span className="mn">1d</span></a>
       </div>
     </header>
   )
