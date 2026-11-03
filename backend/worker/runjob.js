@@ -27,8 +27,19 @@ process.once("message", async (message) => {
 
     const data = await runanalysis({ fullname, sha, branch }, report);
     const { filepath, sizebytes, data: compressedData } = await writesnapshotfile(fullname, sha, data.version, data);
+    const healthScores = data.files.map((file) => file.health?.score).filter(Number.isFinite);
+    const language = Object.entries(data.stats?.languages || {}).sort((a, b) => b[1] - a[1])[0]?.[0] || "Source";
+    const metrics = {
+      language,
+      files: data.stats?.sourcefiles ?? data.files.length,
+      health: healthScores.length
+        ? Math.round(healthScores.reduce((total, score) => total + score, 0) / healthScores.length)
+        : null,
+      cycles: data.stats?.cycles ?? data.cycles.length,
+      godfiles: data.godfiles.length,
+    };
 
-    await send({ type: "result", filepath, sizebytes, version: data.version, data: compressedData });
+    await send({ type: "result", filepath, sizebytes, version: data.version, data: compressedData, metrics });
     process.exit(0);
   } catch (error) {
     await send({

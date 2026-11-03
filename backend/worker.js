@@ -10,6 +10,7 @@ import path from "path";
 import { fork } from "child_process";
 import { fileURLToPath } from "url";
 import mongoose from "mongoose";
+import Submission from "./models/submission.js";
 
 import { connectdb } from "./db/connect.js";
 import {
@@ -166,6 +167,20 @@ async function processjob(job) {
         data: outcome.data,
       });
       await completejob(job._id, WORKER_ID);
+      try {
+        await Submission.updateMany(
+          { jobid: job._id },
+          {
+            $set: {
+              status: "cast",
+              ...outcome.metrics,
+              durationms: job.startedat ? Math.max(0, Date.now() - new Date(job.startedat).getTime()) : null,
+            },
+          }
+        );
+      } catch (error) {
+        log(`history update failed for ${label}:`, error.message);
+      }
       log(`finished ${label}`);
     } catch (error) {
       const result = await failjob(job, WORKER_ID, { message: "Could not save the snapshot", retryable: true });

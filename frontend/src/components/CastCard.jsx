@@ -124,7 +124,7 @@ export default function CastCard() {
         setStats?.(stats => ({ ...stats, a: (stats.a || 0) + 1, f: snapshot.stats?.sourcefiles || snapshot.files?.length || 0 }));
 
         const histEntry = {
-          id: Date.now(),
+          id: result.submissionId || Date.now(),
           n: repoFullName,
           s: sha.slice(0, 7),
           l: adapted.N[0]?.language || 'Source',
@@ -222,7 +222,7 @@ export default function CastCard() {
               setStats?.(stats => ({ ...stats, a: (stats.a || 0) + 1, f: snapshot.stats?.sourcefiles || snapshot.files?.length || 0 }));
 
               const histEntry = {
-                id: Date.now(),
+                id: result.submissionId || Date.now(),
                 n: repoFullName,
                 s: (jobView.sha || sha).slice(0, 7),
                 l: adapted.N[0]?.language || 'Source',

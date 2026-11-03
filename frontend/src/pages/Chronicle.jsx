@@ -4,6 +4,7 @@ import Icon from '../components/Icon'
 import Ring from '../components/Ring'
 import { useDash } from '../components/DashContext'
 import { ago, castsThisWeek, dl, dur, STL } from '../lib/utils'
+import { deleteHistory } from '../lib/api'
 
 const grp = t => {
   const s = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
@@ -84,7 +85,7 @@ export default function Chronicle() {
   const cs = hist.filter(h => h.st === 'cast' || h.st === 'cached')
   const ar = cs.length ? Math.round(hist.filter(h => h.st === 'cached').length / cs.length * 100) : 0
   const tr = hist.filter(h => h.st === 'partial' || h.st === 'fizzled').length
-  const cm = hist.filter(h => h.st === 'cast'), av = cm.length ? cm.reduce((a, h) => a + h.ms, 0) / cm.length / 1000 : 0
+  const cm = hist.filter(h => h.st === 'cast'), av = cm.length ? cm.reduce((a, h) => a + (h.ms || 0), 0) / cm.length / 1000 : 0
 
   let l = hist.slice()
   if (hf === 'cast') l = l.filter(h => h.st === 'cast'); else if (hf === 'cached') l = l.filter(h => h.st === 'cached')
@@ -104,7 +105,14 @@ export default function Chronicle() {
       dl(JSON.stringify(content, null, 2), h.n.replace('/', '-') + '-' + (h.s || 'snapshot') + '.json', 'application/json');
       say('JSON saved');
     },
-    erase: h => { setHist(x => x.filter(y => y.id !== h.id)); setPicks(p => p.filter(x => x !== h.id)); setStill(key); setNewId(null); say('Struck from the chronicle') },
+    erase: async h => {
+      try {
+        if (/^[a-f\d]{24}$/i.test(String(h.id))) await deleteHistory(h.id)
+        setHist(x => x.filter(y => y.id !== h.id)); setPicks(p => p.filter(x => x !== h.id)); setStill(key); setNewId(null); say('Struck from the chronicle')
+      } catch {
+        say('Could not remove this cast. Please try again.')
+      }
+    },
   }
   const filt = (set, v) => { set(v); setFk(k => k + 1) }
 

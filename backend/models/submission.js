@@ -6,23 +6,47 @@ const submissionschema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  fullname: 
-  {
+  fullname: {
     type: String,
     required: true,
   },
-  sha: 
-  {
+  sha: {
     type: String,
     required: true,
   },
-  jobid: 
-  {
+  jobid: {
     type: mongoose.Schema.Types.ObjectId,
-    required: true,
   },
-  createdat: 
-  {
+  status: {
+    type: String,
+    enum: ["cast", "cached", "failed", "queued", "running"],
+    default: "cached",
+  },
+  language: {
+    type: String,
+    default: null,
+  },
+  files: {
+    type: Number,
+    default: null,
+  },
+  health: {
+    type: Number,
+    default: null,
+  },
+  cycles: {
+    type: Number,
+    default: null,
+  },
+  godfiles: {
+    type: Number,
+    default: null,
+  },
+  durationms: {
+    type: Number,
+    default: null,
+  },
+  createdat: {
     type: Date,
     default: Date.now,
   },
