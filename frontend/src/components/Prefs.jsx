@@ -10,7 +10,9 @@ export function PrefsProvider({ children }) {
   const [stp, setS] = useState(() => rd('cs-stp', '1') !== '0')
   const [stpMin, setM] = useState(() => rd('cs-stpmin', '0') === '1')
   useEffect(() => {
-    document.documentElement.style.background = document.body.style.background = theme === 'dark' ? '#0E0607' : '#E8DCC4'
+    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
+      || (theme === 'dark' ? '#0E0607' : '#E8DCC4');
+    document.documentElement.style.background = document.body.style.background = bg;
   }, [theme])
   const mk = (set, key, enc = v => (v ? '1' : '0')) => v => { set(v); wr(key, enc(v)) }
   const value = {

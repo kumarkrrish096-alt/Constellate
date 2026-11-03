@@ -11,23 +11,26 @@ import AtlasView from './AtlasView';
 import Health from './Health';
 import Pathfinder from './Pathfinder';
 import Chronicle from './Chronicle';
-import { seedH } from '../lib/data';
 import { loadHist } from '../lib/utils';
 import { getDemoDataset, adaptSnapshot } from '../lib/adapter';
-import { fetchSnapshot } from '../lib/api';
+import { fetchHistory, fetchSnapshot } from '../lib/api';
+import { useAuth } from '../auth/AuthContext';
 
 export default function Dashboard() {
+  const { rawUser } = useAuth();
+  const userId = rawUser?.id;
   const [view, setView] = useState('overview');
   const [dd, setDd] = useState(null); // 'bell' | 'exm' | 'sres' | 'pop'
   const [pop, setPop] = useState({ tab: 'settings', at: 'bl' });
-  const [hist, setHistS] = useState(() => loadHist(seedH));
+  const [historyState, setHistoryState] = useState(() => ({ userId, items: loadHist(userId) }));
+  const hist = historyState.userId === userId ? historyState.items : loadHist(userId);
   const [activeData, setActiveData] = useState(() => getDemoDataset());
   const [sel, setSel] = useState(-1);
   const [note, setNote] = useState('');
-  const [repo, setRepo] = useState('expressjs/express · a3f9c1e');
+  const [repo, setRepo] = useState('No atlas cast yet');
   const [repository, setRepository] = useState(null);
   const [snapshot, setSnapshot] = useState(null);
-  const [stats, setStats] = useState({ a: 12, f: 4812, cycles: 9, health: 74 });
+  const [stats, setStats] = useState({ a: 0, f: 0, cycles: 0, health: 0 });
   const [status, setStatus] = useState({ t: '', s: '', p: null });
   const [url, setUrl] = useState('');
   const [mode, setMode] = useState('force');
@@ -40,15 +43,50 @@ export default function Dashboard() {
   const tt = useRef();
 
   const setHist = (fn) =>
-    setHistS((prev) => {
-      const n = typeof fn === 'function' ? fn(prev) : fn;
+    setHistoryState((current) => {
+      const previous = current.userId === userId ? current.items : loadHist(userId);
+      const n = typeof fn === 'function' ? fn(previous) : fn;
+      if (userId) {
+        try {
+          localStorage.setItem(`cs-hist:${userId}`, JSON.stringify(n));
+        } catch {
+          /* ignore */
+        }
+      }
+      return { userId, items: n };
+    });
+
+  useEffect(() => {
+    let active = true;
+    if (!userId) return () => { active = false; };
+
+    fetchHistory().then((items) => {
+      if (!active) return;
+      const cached = new Map(loadHist(userId).map((item) => [String(item.id), item]));
+      const history = items.map((item) => {
+        const previous = cached.get(String(item.id));
+        return {
+          ...previous,
+          ...item,
+          l: item.l || previous?.l,
+          f: item.f ?? previous?.f,
+          h: item.h ?? previous?.h,
+          cy: item.cy ?? previous?.cy,
+          g: item.g ?? previous?.g,
+          ms: item.ms ?? previous?.ms,
+          snapshot: previous?.snapshot,
+        };
+      });
+      setHistoryState({ userId, items: history });
       try {
-        localStorage.setItem('cs-hist', JSON.stringify(n));
+        localStorage.setItem(`cs-hist:${userId}`, JSON.stringify(history));
       } catch {
         /* ignore */
       }
-      return n;
-    });
+    }).catch(() => {});
+
+    return () => { active = false; };
+  }, [userId]);
 
   const say = (m) => {
     setToast({ m, on: true });

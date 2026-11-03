@@ -29,8 +29,9 @@ export const snapshot = repo => {
     coChange: CO.map(c => ({ a: N[c.a].name, b: N[c.b].name, commits: c.w })),
   }
 }
-export const loadHist = seed => {
+export const loadHist = userId => {
+  if (!userId) return []
   let h = null
-  try { h = JSON.parse(localStorage.getItem('cs-hist')) } catch { /* ignore */ }
-  return Array.isArray(h) && h.length ? h : seed()
+  try { h = JSON.parse(localStorage.getItem(`cs-hist:${userId}`)) } catch { /* ignore */ }
+  return Array.isArray(h) ? h : []
 }

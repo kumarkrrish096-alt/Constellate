@@ -29,6 +29,20 @@ export async function submitAnalysis(repoUrl) {
   return data;
 }
 
+export async function fetchHistory() {
+  const res = await authFetch('/api/history');
+  const data = await res.json().catch(() => []);
+  if (!res.ok) throw new Error(data.error || 'Could not load history.');
+  return Array.isArray(data) ? data : [];
+}
+
+export async function deleteHistory(id) {
+  const res = await authFetch(`/api/history/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Could not delete history item.');
+  return data;
+}
+
 /**
  * Fetch current job status via GET /api/jobs/:id (public route).
  */
