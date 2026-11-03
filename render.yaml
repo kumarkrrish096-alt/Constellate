@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: constellate-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node deploy/start.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DB_NAME
+        value: constellate
+      - key: COOKIE_SAMESITE
+        value: none
+      - key: TRUST_PROXY
+        value: "1"
+      - key: WORKER_CONCURRENCY
+        value: "1"
+      - key: JOB_MEMORY_MB
+        value: "320"
+      - key: FRONTEND_URL
+        sync: false
+      - key: BACKEND_URL
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
